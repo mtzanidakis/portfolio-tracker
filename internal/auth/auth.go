@@ -1,20 +1,23 @@
 // Package auth provides token generation, hashing, and HTTP middleware
-// for Bearer-token authentication against the tracker's tokens table.
+// for both Bearer-token and session-cookie authentication.
 //
-// Tokens are 256-bit random values, base64url-encoded for transport.
-// Only the SHA-256 hash of the token is stored in the database; the raw
-// value is shown to the user exactly once at creation time.
+// Browsers authenticate with a password (see password.go) and a server
+// session (see session.go), protected against CSRF by the double-submit
+// cookie pattern. External CLIs (ptagent) authenticate with Bearer
+// tokens. The Middleware accepts either: Bearer wins when present.
 package auth
 
 import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mtzanidakis/portfolio-tracker/internal/db"
 	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
@@ -22,8 +25,9 @@ import (
 
 const tokenEntropyBytes = 32
 
-// GenerateToken returns a new (plaintext, hash) pair. The plaintext must be
-// returned to the user exactly once; the hash is what gets persisted.
+// GenerateToken returns a new (plaintext, hash) pair for an API token.
+// The plaintext must be returned to the user exactly once; the hash is
+// what gets persisted.
 func GenerateToken() (plaintext, hash string, err error) {
 	b := make([]byte, tokenEntropyBytes)
 	if _, err := rand.Read(b); err != nil {
@@ -34,19 +38,19 @@ func GenerateToken() (plaintext, hash string, err error) {
 	return plaintext, hash, nil
 }
 
-// HashToken computes the stored form of a plaintext token.
+// HashToken computes the stored form of a plaintext API token.
 func HashToken(plaintext string) string {
 	sum := sha256.Sum256([]byte(plaintext))
 	return hex.EncodeToString(sum[:])
 }
 
-// --- context helpers ---
+// --- user context helpers ---
 
-type ctxKey struct{}
+type userCtxKeyType struct{}
 
-var userCtxKey = ctxKey{}
+var userCtxKey = userCtxKeyType{}
 
-// WithUser attaches a user to the context (used by Middleware).
+// WithUser attaches a user to the context.
 func WithUser(ctx context.Context, u *domain.User) context.Context {
 	return context.WithValue(ctx, userCtxKey, u)
 }
@@ -59,39 +63,72 @@ func UserFrom(ctx context.Context) *domain.User {
 
 // --- middleware ---
 
-// Middleware enforces Bearer-token authentication. On success it injects
-// the authenticated *domain.User into the request context.
+// Middleware enforces authentication on the wrapped handler. It accepts
+// either an Authorization: Bearer token (API clients) or a pt_session
+// cookie plus a matching X-CSRF-Token header for state-changing methods
+// (browser clients).
 type Middleware struct {
-	DB *db.DB
+	DB              *db.DB
+	SessionLifetime time.Duration
 }
 
 // Handler wraps next with auth enforcement.
 func (m *Middleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		plaintext := extractBearer(r)
-		if plaintext == "" {
-			http.Error(w, "missing token", http.StatusUnauthorized)
+		// 1. Bearer path: API clients.
+		if plaintext := extractBearer(r); plaintext != "" {
+			tok, err := m.DB.GetTokenByHash(r.Context(), HashToken(plaintext))
+			if errors.Is(err, db.ErrNotFound) {
+				http.Error(w, "invalid token", http.StatusUnauthorized)
+				return
+			}
+			if err != nil {
+				http.Error(w, "auth error", http.StatusInternalServerError)
+				return
+			}
+			u, err := m.DB.GetUser(r.Context(), tok.UserID)
+			if err != nil {
+				http.Error(w, "auth error", http.StatusInternalServerError)
+				return
+			}
+			_ = m.DB.TouchToken(r.Context(), tok.ID)
+			next.ServeHTTP(w, r.WithContext(WithUser(r.Context(), u)))
 			return
 		}
-		tok, err := m.DB.GetTokenByHash(r.Context(), HashToken(plaintext))
-		if errors.Is(err, db.ErrNotFound) {
-			http.Error(w, "invalid token", http.StatusUnauthorized)
-			return
-		}
-		if err != nil {
-			http.Error(w, "auth error", http.StatusInternalServerError)
-			return
-		}
-		u, err := m.DB.GetUser(r.Context(), tok.UserID)
-		if err != nil {
-			http.Error(w, "auth error", http.StatusInternalServerError)
-			return
-		}
-		// Best-effort touch; ignore error.
-		_ = m.DB.TouchToken(r.Context(), tok.ID)
 
-		r = r.WithContext(WithUser(r.Context(), u))
-		next.ServeHTTP(w, r)
+		// 2. Cookie path: browser clients.
+		sc, err := r.Cookie(SessionCookieName)
+		if err != nil || sc.Value == "" {
+			http.Error(w, "missing credentials", http.StatusUnauthorized)
+			return
+		}
+		session, err := m.DB.GetSession(r.Context(), sc.Value)
+		if errors.Is(err, db.ErrNotFound) {
+			http.Error(w, "invalid session", http.StatusUnauthorized)
+			return
+		}
+		if err != nil {
+			http.Error(w, "auth error", http.StatusInternalServerError)
+			return
+		}
+
+		// 3. CSRF double-submit check for unsafe methods.
+		if !isSafeMethod(r.Method) && !checkCSRF(r) {
+			http.Error(w, "CSRF check failed", http.StatusForbidden)
+			return
+		}
+
+		// 4. Slide session expiry, attach user + session id.
+		if m.SessionLifetime > 0 {
+			_ = m.DB.TouchSession(r.Context(), session.ID, time.Now().Add(m.SessionLifetime))
+		}
+		u, err := m.DB.GetUser(r.Context(), session.UserID)
+		if err != nil {
+			http.Error(w, "auth error", http.StatusInternalServerError)
+			return
+		}
+		ctx := WithSessionID(WithUser(r.Context(), u), session.ID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -102,4 +139,20 @@ func extractBearer(r *http.Request) string {
 		return ""
 	}
 	return strings.TrimPrefix(h, prefix)
+}
+
+func isSafeMethod(m string) bool {
+	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
+}
+
+func checkCSRF(r *http.Request) bool {
+	cookie, err := r.Cookie(CSRFCookieName)
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	header := r.Header.Get(CSRFHeaderName)
+	if header == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(header), []byte(cookie.Value)) == 1
 }
