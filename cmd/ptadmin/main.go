@@ -18,16 +18,19 @@ Usage:
   ptadmin <command> [flags]
 
 Commands:
-  user add     --email EMAIL --name NAME --base-currency CODE
+  user add       --email EMAIL --name NAME [--base-currency CODE]
+                 [--password PW | --no-password]   (prompts interactively
+                 if neither flag is given)
+  user password  --email EMAIL                     (prompts; or --password PW)
   user list
-  user delete  (--id ID | --email EMAIL)
+  user delete    (--id ID | --email EMAIL)
 
-  token create --user EMAIL --name NAME
-  token list   [--user EMAIL]
-  token revoke --id ID
+  token create   --user EMAIL --name NAME
+  token list     [--user EMAIL]
+  token revoke   --id ID
 
   db migrate
-  db backup    --to PATH
+  db backup      --to PATH
 
   version
 
