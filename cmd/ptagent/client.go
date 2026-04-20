@@ -20,7 +20,7 @@ type config struct {
 func loadConfig() (*config, error) {
 	url := os.Getenv("PT_API_URL")
 	if url == "" {
-		url = "http://localhost:8080"
+		url = "http://localhost:8082"
 	}
 	tok := os.Getenv("PT_TOKEN")
 	if tok == "" {

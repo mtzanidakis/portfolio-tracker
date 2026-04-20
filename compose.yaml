@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     user: 1000:1000
     environment:
-      - PT_ADDR=:8080
+      - PT_ADDR=:8082
       - PT_DB=/data/pt.db
       - PT_PRICE_REFRESH_INTERVAL=15m
       - PT_COINGECKO_API_KEY=${PT_COINGECKO_API_KEY:-}

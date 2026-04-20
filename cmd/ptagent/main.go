@@ -4,7 +4,7 @@
 //
 // Configuration is via environment:
 //
-//	PT_API_URL  base URL (default: http://localhost:8080)
+//	PT_API_URL  base URL (default: http://localhost:8082)
 //	PT_TOKEN    required Bearer token from `ptadmin token create`
 package main
 
@@ -44,7 +44,7 @@ Global flags:
   --json        output raw JSON (default: human table)
 
 Environment:
-  PT_API_URL   API base (default http://localhost:8080)
+  PT_API_URL   API base (default http://localhost:8082)
   PT_TOKEN     required Bearer token
 `
 

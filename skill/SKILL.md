@@ -18,7 +18,7 @@ Use this skill when the user asks about their self-hosted portfolio tracker — 
 
 The skill wraps the `ptagent` binary. It reads two environment variables:
 
-- `PT_API_URL` — base URL of the tracker (default `http://localhost:8080`)
+- `PT_API_URL` — base URL of the tracker (default `http://localhost:8082`)
 - `PT_TOKEN` — Bearer token, created with `ptadmin token create` (required)
 
 If `PT_TOKEN` is missing, ask the user to run `ptadmin token create --user <email> --name <label>` inside the server container (`make admin ARGS="token create ..."`) and paste the token.

@@ -43,5 +43,5 @@ COPY --from=build /out/ptd /out/ptadmin /usr/local/bin/
 
 USER pt:pt
 VOLUME /data
-EXPOSE 8080
+EXPOSE 8082
 ENTRYPOINT ["ptd"]

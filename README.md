@@ -25,7 +25,7 @@ make admin ARGS="token create --user you@example.com --name default"
 # ↑ prints the token once. Save it.
 
 # 4. Open the app
-open http://localhost:8080
+open http://localhost:8082
 # paste the token when prompted
 ```
 
@@ -38,7 +38,7 @@ All server knobs come from environment variables (or CLI flags, which win).
 
 | Variable                   | Default              | Description                                    |
 |----------------------------|----------------------|------------------------------------------------|
-| `PT_ADDR`                  | `:8080`              | HTTP listen address                            |
+| `PT_ADDR`                  | `:8082`              | HTTP listen address                            |
 | `PT_DB`                    | `./data/pt.db`       | SQLite database path                           |
 | `PT_PRICE_REFRESH_INTERVAL`| `15m`                | background refresh cadence (Go duration)       |
 | `PT_COINGECKO_API_KEY`     | *(unset)*            | optional Demo tier key for dedicated quota     |
@@ -48,7 +48,7 @@ All server knobs come from environment variables (or CLI flags, which win).
 
 | Variable      | Default                 |
 |---------------|-------------------------|
-| `PT_API_URL`  | `http://localhost:8080` |
+| `PT_API_URL`  | `http://localhost:8082` |
 | `PT_TOKEN`    | *(required)*            |
 
 ## Layout

@@ -32,7 +32,7 @@ func main() {
 
 func run() int {
 	var (
-		addr         = flag.String("addr", envOr("PT_ADDR", ":8080"), "HTTP listen address")
+		addr         = flag.String("addr", envOr("PT_ADDR", ":8082"), "HTTP listen address")
 		dbPath       = flag.String("db", envOr("PT_DB", "./data/pt.db"), "SQLite database path")
 		refreshEvery = flag.Duration("refresh", envDur("PT_PRICE_REFRESH_INTERVAL", 15*time.Minute), "price/fx refresh interval")
 		cgKey        = flag.String("coingecko-api-key", os.Getenv("PT_COINGECKO_API_KEY"), "optional CoinGecko Demo API key")
