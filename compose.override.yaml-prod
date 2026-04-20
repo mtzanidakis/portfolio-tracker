@@ -1,0 +1,18 @@
+services:
+  ptd-tsrp:
+    container_name: ptd-tsrp
+    image: ghcr.io/mtzanidakis/tsrp
+    restart: always
+    user: 1000:1000
+    environment:
+      - BACKEND=http://portfolio-tracker:8080
+      - HOSTNAME=${HOSTNAME}
+      - TS_AUTHKEY=${TS_AUTHKEY}
+    volumes:
+      - ./config/tsrp:/var/lib/tsrp
+
+  ptd:
+    image: ghcr.io/mtzanidakis/portfolio-tracker:latest
+    restart: always
+
+# vi: ft=yaml

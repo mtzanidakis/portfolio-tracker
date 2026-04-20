@@ -1,0 +1,11 @@
+services:
+  ptd:
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
+    image: portfolio-tracker:${VERSION:-latest}
+    ports:
+      - "8080:8080"
+
+# vi: ft=yaml
