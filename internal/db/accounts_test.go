@@ -14,7 +14,7 @@ func TestAccountCRUD(t *testing.T) {
 
 	acc := &domain.Account{
 		UserID: u.ID, Name: "Ember", Type: "Brokerage", Short: "EB",
-		Color: "#c8502a", Currency: domain.USD, Connected: true,
+		Color: "#c8502a", Currency: domain.USD,
 	}
 	if err := db.CreateAccount(ctx, acc); err != nil {
 		t.Fatalf("create: %v", err)
@@ -24,17 +24,16 @@ func TestAccountCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if got.Currency != domain.USD || !got.Connected {
+	if got.Currency != domain.USD {
 		t.Errorf("mismatch: %+v", got)
 	}
 
 	got.Name = "Ember Brokerage"
-	got.Connected = false
 	if err := db.UpdateAccount(ctx, got); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	again, _ := db.GetAccount(ctx, acc.ID)
-	if again.Name != "Ember Brokerage" || again.Connected {
+	if again.Name != "Ember Brokerage" {
 		t.Errorf("update not persisted: %+v", again)
 	}
 
@@ -56,7 +55,7 @@ func TestCreateAccount_InvalidCurrency(t *testing.T) {
 	u := mustCreateUser(t, db, "bad@test.io")
 	acc := &domain.Account{
 		UserID: u.ID, Name: "X", Type: "T", Short: "X",
-		Color: "#000", Currency: domain.Currency("XYZ"), Connected: true,
+		Color: "#000", Currency: domain.Currency("XYZ"),
 	}
 	if err := db.CreateAccount(t.Context(), acc); err == nil {
 		t.Fatal("expected error")

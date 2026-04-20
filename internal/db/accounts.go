@@ -15,10 +15,10 @@ func (db *DB) CreateAccount(ctx context.Context, acc *domain.Account) error {
 		return fmt.Errorf("invalid currency %q", acc.Currency)
 	}
 	res, err := db.ExecContext(ctx, `
-        INSERT INTO accounts(user_id, name, type, short, color, currency, connected)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        INSERT INTO accounts(user_id, name, type, short, color, currency)
+        VALUES (?, ?, ?, ?, ?, ?)`,
 		acc.UserID, acc.Name, acc.Type, acc.Short, acc.Color,
-		string(acc.Currency), boolToInt(acc.Connected),
+		string(acc.Currency),
 	)
 	if err != nil {
 		return fmt.Errorf("insert account: %w", err)
@@ -36,14 +36,14 @@ func (db *DB) CreateAccount(ctx context.Context, acc *domain.Account) error {
 // GetAccount returns the account by id or ErrNotFound.
 func (db *DB) GetAccount(ctx context.Context, id int64) (*domain.Account, error) {
 	return db.scanAccount(ctx, `
-        SELECT id, user_id, name, type, short, color, currency, connected, created_at
+        SELECT id, user_id, name, type, short, color, currency, created_at
           FROM accounts WHERE id = ?`, id)
 }
 
 // ListAccounts returns every account owned by the user, ordered by id.
 func (db *DB) ListAccounts(ctx context.Context, userID int64) ([]*domain.Account, error) {
 	rows, err := db.QueryContext(ctx, `
-        SELECT id, user_id, name, type, short, color, currency, connected, created_at
+        SELECT id, user_id, name, type, short, color, currency, created_at
           FROM accounts WHERE user_id = ? ORDER BY id`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts: %w", err)
@@ -68,10 +68,10 @@ func (db *DB) UpdateAccount(ctx context.Context, acc *domain.Account) error {
 	}
 	res, err := db.ExecContext(ctx, `
         UPDATE accounts
-           SET name = ?, type = ?, short = ?, color = ?, currency = ?, connected = ?
+           SET name = ?, type = ?, short = ?, color = ?, currency = ?
          WHERE id = ?`,
 		acc.Name, acc.Type, acc.Short, acc.Color,
-		string(acc.Currency), boolToInt(acc.Connected), acc.ID,
+		string(acc.Currency), acc.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update account: %w", err)
@@ -98,16 +98,14 @@ func (db *DB) DeleteAccount(ctx context.Context, id int64) error {
 
 func scanAccountRow(r rowScanner) (*domain.Account, error) {
 	var (
-		acc       domain.Account
-		cur       string
-		connected int64
+		acc domain.Account
+		cur string
 	)
 	if err := r.Scan(&acc.ID, &acc.UserID, &acc.Name, &acc.Type, &acc.Short,
-		&acc.Color, &cur, &connected, &acc.CreatedAt); err != nil {
+		&acc.Color, &cur, &acc.CreatedAt); err != nil {
 		return nil, fmt.Errorf("scan account: %w", err)
 	}
 	acc.Currency = domain.Currency(cur)
-	acc.Connected = connected != 0
 	return &acc, nil
 }
 
@@ -118,11 +116,4 @@ func (db *DB) scanAccount(ctx context.Context, query string, arg any) (*domain.A
 		return nil, ErrNotFound
 	}
 	return acc, err
-}
-
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }

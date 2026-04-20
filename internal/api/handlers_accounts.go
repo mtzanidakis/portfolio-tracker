@@ -22,12 +22,11 @@ func listAccountsHandler(d *db.DB) http.HandlerFunc {
 }
 
 type accountRequest struct {
-	Name      string          `json:"name"`
-	Type      string          `json:"type"`
-	Short     string          `json:"short"`
-	Color     string          `json:"color"`
-	Currency  domain.Currency `json:"currency"`
-	Connected bool            `json:"connected"`
+	Name     string          `json:"name"`
+	Type     string          `json:"type"`
+	Short    string          `json:"short"`
+	Color    string          `json:"color"`
+	Currency domain.Currency `json:"currency"`
 }
 
 func createAccountHandler(d *db.DB) http.HandlerFunc {
@@ -47,13 +46,12 @@ func createAccountHandler(d *db.DB) http.HandlerFunc {
 			return
 		}
 		acc := &domain.Account{
-			UserID:    u.ID,
-			Name:      req.Name,
-			Type:      req.Type,
-			Short:     req.Short,
-			Color:     req.Color,
-			Currency:  req.Currency,
-			Connected: req.Connected,
+			UserID:   u.ID,
+			Name:     req.Name,
+			Type:     req.Type,
+			Short:    req.Short,
+			Color:    req.Color,
+			Currency: req.Currency,
 		}
 		if err := d.CreateAccount(r.Context(), acc); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -107,7 +105,6 @@ func updateAccountHandler(d *db.DB) http.HandlerFunc {
 			}
 			acc.Currency = req.Currency
 		}
-		acc.Connected = req.Connected
 		if err := d.UpdateAccount(r.Context(), acc); err != nil {
 			writeDBError(w, err)
 			return

@@ -130,10 +130,10 @@ func cmdAccounts(cfg *config, args []string) int {
 		return 0
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "ID\tNAME\tTYPE\tCCY\tCONNECTED")
+	_, _ = fmt.Fprintln(w, "ID\tNAME\tTYPE\tCCY")
 	for _, a := range rows {
-		_, _ = fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\n",
-			a["id"], a["name"], a["type"], a["currency"], a["connected"])
+		_, _ = fmt.Fprintf(w, "%v\t%v\t%v\t%v\n",
+			a["id"], a["name"], a["type"], a["currency"])
 	}
 	_ = w.Flush()
 	return 0

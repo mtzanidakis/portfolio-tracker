@@ -22,9 +22,6 @@ export function AccountModal({ account, onClose, onSaved }) {
   const [short, setShort] = useState(account?.short || '');
   const [color, setColor] = useState(account?.color || COLOURS[0]);
   const [currency, setCurrency] = useState(account?.currency || 'USD');
-  const [connected, setConnected] = useState(
-    account ? !!account.connected : true,
-  );
   const [err, setErr] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -45,7 +42,6 @@ export function AccountModal({ account, onClose, onSaved }) {
         short: (short || autoShort || '??').slice(0, 3).toUpperCase(),
         color,
         currency,
-        connected,
       };
       const saved = editing
         ? await api.updateAccount(account.id, payload)
@@ -114,12 +110,6 @@ export function AccountModal({ account, onClose, onSaved }) {
               ))}
             </div>
           </div>
-        </div>
-
-        <div class="tweak-row" style={{ marginTop: 4 }}>
-          <span>Connected</span>
-          <button type="button" class={`switch ${connected ? 'on' : ''}`}
-            onClick={() => setConnected(c => !c)} />
         </div>
 
         {err && <div style={{ color: 'var(--neg)', fontSize: 13, marginTop: 8 }}>{err}</div>}

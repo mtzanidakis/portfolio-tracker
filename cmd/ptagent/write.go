@@ -62,12 +62,11 @@ func cmdAddTx(cfg *config, args []string) int {
 func cmdAddAccount(cfg *config, args []string) int {
 	fs := flag.NewFlagSet("add-account", flag.ContinueOnError)
 	var (
-		name      = fs.String("name", "", "display name (required)")
-		typ       = fs.String("type", "Brokerage", "free-text type label")
-		short     = fs.String("short", "", "2-3 char label")
-		color     = fs.String("color", "#c8502a", "hex color")
-		currency  = fs.String("currency", "USD", "default currency")
-		connected = fs.Bool("connected", true, "mark as connected")
+		name     = fs.String("name", "", "display name (required)")
+		typ      = fs.String("type", "Brokerage", "free-text type label")
+		short    = fs.String("short", "", "2-3 char label")
+		color    = fs.String("color", "#c8502a", "hex color")
+		currency = fs.String("currency", "USD", "default currency")
 	)
 	if !requireYes(fs, args) {
 		return 2
@@ -77,7 +76,7 @@ func cmdAddAccount(cfg *config, args []string) int {
 	}
 	body := map[string]any{
 		"name": *name, "type": *typ, "short": *short, "color": *color,
-		"currency": *currency, "connected": *connected,
+		"currency": *currency,
 	}
 	var out map[string]any
 	if err := apiPOST(cfg, "/api/v1/accounts", body, &out); err != nil {

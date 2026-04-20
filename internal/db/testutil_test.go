@@ -48,13 +48,12 @@ func mustCreateAsset(t *testing.T, db *DB, symbol string, typ domain.AssetType, 
 func mustCreateAccount(t *testing.T, db *DB, userID int64, cur domain.Currency) *domain.Account {
 	t.Helper()
 	acc := &domain.Account{
-		UserID:    userID,
-		Name:      "Test Account",
-		Type:      "Brokerage",
-		Short:     "TA",
-		Color:     "#000000",
-		Currency:  cur,
-		Connected: true,
+		UserID:   userID,
+		Name:     "Test Account",
+		Type:     "Brokerage",
+		Short:    "TA",
+		Color:    "#000000",
+		Currency: cur,
 	}
 	if err := db.CreateAccount(t.Context(), acc); err != nil {
 		t.Fatalf("create account: %v", err)

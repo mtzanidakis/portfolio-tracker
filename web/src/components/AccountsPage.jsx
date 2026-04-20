@@ -30,16 +30,6 @@ export function AccountsPage() {
 
   return (
     <>
-      <div class="hero">
-        <div class="hero-main">
-          <div class="hero-label">Accounts</div>
-          <div class="hero-value">{accounts.length}</div>
-          <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-muted)' }}>
-            {accounts.filter(a => a.connected).length} connected
-          </div>
-        </div>
-      </div>
-
       <div class="acc-grid">
         {accounts.map(a => (
           <div key={a.id} class="acc-card">
@@ -69,10 +59,6 @@ export function AccountsPage() {
             <div>
               <div class="stat-label">Currency</div>
               <div class="acc-value">{a.currency}</div>
-            </div>
-
-            <div class="acc-footer">
-              <span><span class="status-dot" /> {a.connected ? 'Connected' : 'Offline'}</span>
             </div>
           </div>
         ))}

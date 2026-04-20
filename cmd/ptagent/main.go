@@ -33,7 +33,7 @@ Write commands (require --yes):
   add-tx --account-id ID --symbol SYM --side buy|sell --qty N --price N
          [--fee N] [--fx N] [--date YYYY-MM-DD] [--note TXT] --yes
   add-account --name NAME --type TYPE --short XX --color #RRGGBB
-              --currency USD|EUR|... [--connected] --yes
+              --currency USD|EUR|... --yes
   add-asset --symbol SYM --name NAME --type stock|etf|crypto|cash
             --currency USD|EUR|... [--provider P] [--provider-id ID] --yes
   delete-tx --id ID --yes
