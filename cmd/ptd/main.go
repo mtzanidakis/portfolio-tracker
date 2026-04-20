@@ -81,7 +81,7 @@ func run() int {
 	go runSessionPurge(ctx, conn, logger)
 
 	// HTTP mux: API + embedded frontend.
-	mux := api.NewRouter(conn, lifetime)
+	mux := api.NewRouter(conn, lifetime, api.WithPriceRefresher(svc))
 	mux.Handle("/", web.DefaultHandler())
 
 	srv := &http.Server{

@@ -129,6 +129,7 @@ type performanceResponse struct {
 	Currency  string             `json:"currency"`
 	Timeframe string             `json:"timeframe"`
 	Series    []performancePoint `json:"series"`
+	AnyStale  bool               `json:"any_stale"`
 }
 
 func performanceHandler(d *db.DB) http.HandlerFunc {
@@ -157,6 +158,13 @@ func performanceHandler(d *db.DB) http.HandlerFunc {
 		values := portfolio.ValueHoldings(holdings, prices, fx, currencies, u.BaseCurrency)
 		total := portfolio.TotalValueBase(values)
 		cost := portfolio.TotalCostBase(values)
+		anyStale := false
+		for _, v := range values {
+			if v.PriceStale {
+				anyStale = true
+				break
+			}
+		}
 
 		var pct float64
 		if cost > 0 {
@@ -166,6 +174,7 @@ func performanceHandler(d *db.DB) http.HandlerFunc {
 			Total:     total,
 			Cost:      cost,
 			PnL:       total - cost,
+			AnyStale:  anyStale,
 			PnLPct:    pct,
 			Currency:  string(u.BaseCurrency),
 			Timeframe: tf,

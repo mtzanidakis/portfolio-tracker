@@ -11,15 +11,26 @@ export function PerformancePage({ privacy, currency }) {
   const [perf, setPerf] = useState(null);
   const [holdings, setHoldings] = useState([]);
   const [err, setErr] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
+  const loadPerf = (t) => api.performance(t).then(setPerf).catch(e => setErr(e.message));
+  const loadHoldings = () => api.holdings().then(setHoldings).catch(e => setErr(e.message));
+
+  useEffect(() => { setErr(null); loadPerf(tf); }, [tf]);
+  useEffect(() => { loadHoldings(); }, []);
+
+  const refresh = async () => {
+    setRefreshing(true);
     setErr(null);
-    api.performance(tf).then(setPerf).catch(e => setErr(e.message));
-  }, [tf]);
-
-  useEffect(() => {
-    api.holdings().then(setHoldings).catch(e => setErr(e.message));
-  }, []);
+    try {
+      await api.refreshPrices();
+      await Promise.all([loadPerf(tf), loadHoldings()]);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (err) return <div class="empty">Error: {err}</div>;
   if (!perf) return <div class="empty">Loading…</div>;
@@ -27,6 +38,7 @@ export function PerformancePage({ privacy, currency }) {
   const movers = [...(holdings || [])]
     .filter(h => h.Qty > 0)
     .sort((a, b) => (b.PnLPctBase || 0) - (a.PnLPctBase || 0));
+  const anyStale = movers.some(h => h.PriceStale);
 
   const series = (perf.series || []).map(p => ({ d: p.at, v: p.value }));
 
@@ -43,6 +55,11 @@ export function PerformancePage({ privacy, currency }) {
             {fmtMoney(perf.pnl, currency, { sign: true })} · {fmtPct(perf.pnl_pct)}
           </div>
           <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-faint)' }}>all time</div>
+          {anyStale && (
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--neg)' }}>
+              Some prices are unavailable — stale positions are valued at cost.
+            </div>
+          )}
         </div>
         <div class="hero-side">
           <div class="stat">
@@ -52,7 +69,13 @@ export function PerformancePage({ privacy, currency }) {
                 {privacy ? <span class="masked">{fmtMoney(perf.cost, currency)}</span> : fmtMoney(perf.cost, currency)}
               </div>
             </div>
-            <div class="stat-sub">Across {holdings?.length || 0} holdings</div>
+            <div class="stat-sub">
+              <div>Across {holdings?.length || 0} holdings</div>
+              <button class="btn" onClick={refresh} disabled={refreshing}
+                style={{ marginTop: 8, fontSize: 12, padding: '4px 10px' }}>
+                {refreshing ? 'Refreshing…' : 'Refresh prices'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -105,6 +128,11 @@ export function PerformancePage({ privacy, currency }) {
                 </td>
                 <td class="num" style={{ textAlign: 'right' }}>
                   {privacy ? <span class="masked">{fmtMoney(h.ValueBase, currency)}</span> : fmtMoney(h.ValueBase, currency)}
+                  {h.PriceStale && (
+                    <span title="Price data unavailable; valued at cost" style={{ marginLeft: 6, color: 'var(--neg)' }}>
+                      ⚠
+                    </span>
+                  )}
                 </td>
                 <td class="num" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
                   {privacy ? <span class="masked">{fmtMoney(h.CostBase, currency)}</span> : fmtMoney(h.CostBase, currency)}

@@ -13,23 +13,44 @@ import (
 // non-positive lifetime.
 const DefaultSessionLifetime = 30 * 24 * time.Hour
 
+// Option tweaks optional NewRouter dependencies (FX provider, price
+// refresher, …). Call sites that don't need any optional wiring can
+// skip this argument entirely.
+type Option func(*routerCfg)
+
+type routerCfg struct {
+	fxHistory prices.FxHistoryProvider
+	refresher PriceRefresher
+}
+
+// WithFxHistory overrides the default Frankfurter backing for
+// GET /api/v1/fx/rate. Used by tests.
+func WithFxHistory(p prices.FxHistoryProvider) Option {
+	return func(c *routerCfg) { c.fxHistory = p }
+}
+
+// WithPriceRefresher attaches a price refresher so the router exposes
+// POST /api/v1/prices/refresh. Without this option, the endpoint is
+// not registered.
+func WithPriceRefresher(r PriceRefresher) Option {
+	return func(c *routerCfg) { c.refresher = r }
+}
+
 // NewRouter returns the v1 API mux. /api/v1/version and /api/v1/login
 // are public; every other route requires either a Bearer API token or
 // a valid pt_session cookie (with X-CSRF-Token header on mutations).
 //
-// An optional FxHistoryProvider overrides the default Frankfurter
-// backing for GET /api/v1/fx/rate — useful in tests.
-//
 // The returned *http.ServeMux can be extended by the caller (e.g., to
 // mount a static-file handler at "/").
-func NewRouter(d *db.DB, sessionLifetime time.Duration, fxHistory ...prices.FxHistoryProvider) *http.ServeMux {
+func NewRouter(d *db.DB, sessionLifetime time.Duration, opts ...Option) *http.ServeMux {
 	if sessionLifetime <= 0 {
 		sessionLifetime = DefaultSessionLifetime
 	}
-	var fxHist prices.FxHistoryProvider = prices.NewFrankfurter(nil)
-	if len(fxHistory) > 0 && fxHistory[0] != nil {
-		fxHist = fxHistory[0]
+	cfg := &routerCfg{fxHistory: prices.NewFrankfurter(nil)}
+	for _, opt := range opts {
+		opt(cfg)
 	}
+
 	mw := &auth.Middleware{DB: d, SessionLifetime: sessionLifetime}
 	mux := http.NewServeMux()
 
@@ -70,7 +91,11 @@ func NewRouter(d *db.DB, sessionLifetime time.Duration, fxHistory ...prices.FxHi
 	mux.Handle("GET /api/v1/allocations", protect(allocationsHandler(d)))
 	mux.Handle("GET /api/v1/performance", protect(performanceHandler(d)))
 
-	mux.Handle("GET /api/v1/fx/rate", protect(fxRateHandler(fxHist)))
+	mux.Handle("GET /api/v1/fx/rate", protect(fxRateHandler(cfg.fxHistory)))
+
+	if cfg.refresher != nil {
+		mux.Handle("POST /api/v1/prices/refresh", protect(refreshPricesHandler(cfg.refresher)))
+	}
 
 	return mux
 }
