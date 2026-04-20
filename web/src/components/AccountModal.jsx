@@ -4,8 +4,7 @@ import { api } from '../api.js';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD'];
 const TYPES = [
-  'Taxable Brokerage',
-  'Retirement',
+  'Brokerage',
   'Crypto Exchange',
   'Self-custody',
   'Cash / Savings',

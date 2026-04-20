@@ -5,6 +5,7 @@ import { PerformancePage } from './components/PerformancePage.jsx';
 import { AllocationsPage } from './components/AllocationsPage.jsx';
 import { ActivitiesPage } from './components/ActivitiesPage.jsx';
 import { AccountsPage } from './components/AccountsPage.jsx';
+import { AssetsPage } from './components/AssetsPage.jsx';
 import { AddModal } from './components/AddModal.jsx';
 import { LoginForm } from './components/LoginForm.jsx';
 import { ProfileModal } from './components/ProfileModal.jsx';
@@ -16,6 +17,7 @@ const TITLES = {
   allocations: { t: 'Allocations', s: 'Where your money is working' },
   activities:  { t: 'Activities',  s: 'Every buy, every sell' },
   accounts:    { t: 'Accounts',    s: 'Brokerages, exchanges, wallets' },
+  assets:      { t: 'Assets',      s: 'Tickers you can trade or hold' },
 };
 
 export function App() {
@@ -104,6 +106,7 @@ export function App() {
           {page === 'allocations' && <AllocationsPage {...pageProps} />}
           {page === 'activities'  && <ActivitiesPage  {...pageProps} openModal={() => setShowAddTx(true)} />}
           {page === 'accounts'    && <AccountsPage    {...pageProps} />}
+          {page === 'assets'      && <AssetsPage      {...pageProps} />}
         </div>
       </main>
 
