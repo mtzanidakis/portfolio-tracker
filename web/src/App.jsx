@@ -6,8 +6,8 @@ import { AllocationsPage } from './components/AllocationsPage.jsx';
 import { ActivitiesPage } from './components/ActivitiesPage.jsx';
 import { AccountsPage } from './components/AccountsPage.jsx';
 import { AddModal } from './components/AddModal.jsx';
-import { TokenPrompt } from './components/TokenPrompt.jsx';
-import { api, getToken, clearToken } from './api.js';
+import { LoginForm } from './components/LoginForm.jsx';
+import { api } from './api.js';
 
 const TITLES = {
   performance: { t: 'Performance', s: 'Your portfolio over time' },
@@ -22,7 +22,7 @@ export function App() {
   const [aesthetic, setAesthetic] = useState(() => localStorage.getItem('pt-aesthetic') || 'technical');
   const [privacy, setPrivacy] = useState(() => localStorage.getItem('pt-privacy') === '1');
   const [user, setUser] = useState(null);
-  const [needToken, setNeedToken] = useState(!getToken());
+  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -40,22 +40,24 @@ export function App() {
   }, [aesthetic]);
   useEffect(() => { localStorage.setItem('pt-privacy', privacy ? '1' : '0'); }, [privacy]);
 
-  // Load current user whenever the token changes.
+  // Attempt to resolve the current user on first mount. 401 → show login.
   useEffect(() => {
-    if (needToken) return;
-    api.me().then(setUser).catch(err => {
-      if (err.status === 401) {
-        clearToken();
-        setNeedToken(true);
-      }
-    });
-  }, [needToken]);
+    api.me()
+      .then(setUser)
+      .catch(() => setUser(null))
+      .finally(() => setLoading(false));
+  }, []);
 
-  if (needToken) {
-    return <TokenPrompt onSaved={() => setNeedToken(false)} />;
+  const signOut = async () => {
+    try { await api.logout(); } catch { /* ignore */ }
+    setUser(null);
+  };
+
+  if (loading) {
+    return <div class="empty" style={{ padding: 48 }}>Loading…</div>;
   }
   if (!user) {
-    return <div class="empty" style={{ padding: 48 }}>Loading…</div>;
+    return <LoginForm onLoggedIn={(u) => setUser(u)} />;
   }
 
   const appliedTheme = theme === 'system'
@@ -146,8 +148,8 @@ export function App() {
         </div>
 
         <div class="tweak-row" style={{ marginTop: 16 }}>
-          <span>Sign out</span>
-          <button class="btn" onClick={() => { clearToken(); setNeedToken(true); }}>Clear token</button>
+          <span>Session</span>
+          <button class="btn" onClick={signOut}>Sign out</button>
         </div>
       </div>
     </div>

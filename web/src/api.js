@@ -1,26 +1,41 @@
-// Thin fetch wrapper. Token is kept in localStorage.
+// Thin fetch wrapper. Browser clients authenticate via the pt_session
+// cookie set by POST /api/v1/login; ptagent / automation use Bearer
+// tokens (see skill/SKILL.md).
+//
+// For state-changing requests we attach an X-CSRF-Token header whose
+// value is read directly from the pt_csrf cookie (which the server sets
+// as non-HttpOnly specifically so JS can read it). That's the
+// double-submit-cookie pattern and it satisfies the server middleware.
 
-const TOKEN_KEY = 'pt-token';
+const CSRF_COOKIE = 'pt_csrf';
+const CSRF_HEADER = 'X-CSRF-Token';
 
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || '';
+function readCookie(name) {
+  const prefix = name + '=';
+  for (const part of document.cookie.split(';')) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(prefix)) return decodeURIComponent(trimmed.slice(prefix.length));
+  }
+  return '';
 }
-export function setToken(t) {
-  localStorage.setItem(TOKEN_KEY, t);
-}
-export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
+
+function isUnsafe(method) {
+  const m = method.toUpperCase();
+  return m === 'POST' || m === 'PATCH' || m === 'PUT' || m === 'DELETE';
 }
 
 async function request(method, path, body) {
   const headers = { 'Accept': 'application/json' };
-  const tok = getToken();
-  if (tok) headers['Authorization'] = 'Bearer ' + tok;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (isUnsafe(method)) {
+    const csrf = readCookie(CSRF_COOKIE);
+    if (csrf) headers[CSRF_HEADER] = csrf;
+  }
 
   const r = await fetch(path, {
     method,
     headers,
+    credentials: 'include',
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (r.status === 401) {
@@ -40,10 +55,22 @@ async function request(method, path, body) {
 }
 
 export const api = {
-  version:       ()     => request('GET',    '/api/v1/version'),
-  me:            ()     => request('GET',    '/api/v1/me'),
-  updateMe:      (p)    => request('PATCH',  '/api/v1/me', p),
+  // --- auth ---
+  login:          (email, password) => request('POST',  '/api/v1/login', { email, password }),
+  logout:         ()                => request('POST',  '/api/v1/logout'),
+  changePassword: (current, next)   => request('POST',  '/api/v1/password', { current, new: next }),
 
+  // --- profile ---
+  version:   ()  => request('GET',   '/api/v1/version'),
+  me:        ()  => request('GET',   '/api/v1/me'),
+  updateMe:  (p) => request('PATCH', '/api/v1/me', p),
+
+  // --- self-service tokens ---
+  listTokens:   ()       => request('GET',    '/api/v1/me/tokens'),
+  createToken:  (name)   => request('POST',   '/api/v1/me/tokens', { name }),
+  revokeToken:  (id)     => request('DELETE', `/api/v1/me/tokens/${id}`),
+
+  // --- resources ---
   accounts:      ()     => request('GET',    '/api/v1/accounts'),
   createAccount: (p)    => request('POST',   '/api/v1/accounts', p),
   updateAccount: (id,p) => request('PATCH',  `/api/v1/accounts/${id}`, p),
@@ -52,11 +79,11 @@ export const api = {
   assets:        (q='') => request('GET',    '/api/v1/assets' + (q ? '?q=' + encodeURIComponent(q) : '')),
   upsertAsset:   (p)    => request('POST',   '/api/v1/assets', p),
 
-  transactions:  (qs='') => request('GET',    '/api/v1/transactions' + (qs || '')),
-  createTx:      (p)    => request('POST',   '/api/v1/transactions', p),
-  deleteTx:      (id)   => request('DELETE', `/api/v1/transactions/${id}`),
+  transactions:  (qs='') => request('GET',   '/api/v1/transactions' + (qs || '')),
+  createTx:      (p)     => request('POST',  '/api/v1/transactions', p),
+  deleteTx:      (id)    => request('DELETE', `/api/v1/transactions/${id}`),
 
-  holdings:      ()     => request('GET',    '/api/v1/holdings'),
+  holdings:      ()          => request('GET', '/api/v1/holdings'),
   allocations:   (g='asset') => request('GET', '/api/v1/allocations?group=' + g),
-  performance:   (tf='6M') => request('GET', '/api/v1/performance?tf=' + tf),
+  performance:   (tf='6M')   => request('GET', '/api/v1/performance?tf=' + tf),
 };
