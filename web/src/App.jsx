@@ -108,7 +108,8 @@ export function App() {
       </main>
 
       {showAddTx && (
-        <AddModal onClose={() => setShowAddTx(false)}
+        <AddModal user={user}
+          onClose={() => setShowAddTx(false)}
           onSaved={() => setRefreshTick(t => t + 1)} />
       )}
       {profileOpen && (

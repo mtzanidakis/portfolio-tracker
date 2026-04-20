@@ -12,16 +12,19 @@ const TYPES = [
   'Other',
 ];
 
-// deterministic default colour palette — mirrors the mock's earthy tones.
+// Earthy palette lifted from the design mock.
 const COLOURS = ['#c8502a', '#d4953d', '#a8572e', '#7a8c6f', '#b8632e', '#c9a87c'];
 
-export function AccountModal({ onClose, onSaved }) {
-  const [name, setName] = useState('');
-  const [type, setType] = useState(TYPES[0]);
-  const [short, setShort] = useState('');
-  const [color, setColor] = useState(COLOURS[0]);
-  const [currency, setCurrency] = useState('USD');
-  const [connected, setConnected] = useState(true);
+export function AccountModal({ account, onClose, onSaved }) {
+  const editing = !!account;
+  const [name, setName] = useState(account?.name || '');
+  const [type, setType] = useState(account?.type || TYPES[0]);
+  const [short, setShort] = useState(account?.short || '');
+  const [color, setColor] = useState(account?.color || COLOURS[0]);
+  const [currency, setCurrency] = useState(account?.currency || 'USD');
+  const [connected, setConnected] = useState(
+    account ? !!account.connected : true,
+  );
   const [err, setErr] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -36,18 +39,21 @@ export function AccountModal({ onClose, onSaved }) {
     }
     setSubmitting(true);
     try {
-      const created = await api.createAccount({
+      const payload = {
         name: name.trim(),
         type,
         short: (short || autoShort || '??').slice(0, 3).toUpperCase(),
         color,
         currency,
         connected,
-      });
-      onSaved(created);
+      };
+      const saved = editing
+        ? await api.updateAccount(account.id, payload)
+        : await api.createAccount(payload);
+      onSaved(saved);
       onClose();
     } catch (e) {
-      setErr(e.message || 'Failed to create account.');
+      setErr(e.message || 'Failed to save account.');
     } finally {
       setSubmitting(false);
     }
@@ -58,7 +64,7 @@ export function AccountModal({ onClose, onSaved }) {
       <form class="modal" onSubmit={submit}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h2 class="modal-title">Add account</h2>
+            <h2 class="modal-title">{editing ? 'Edit account' : 'Add account'}</h2>
             <div class="modal-sub">Accounts are labels — brokerage, exchange, wallet, cash.</div>
           </div>
           <button type="button" class="icon-btn" onClick={onClose}><Icon name="close" /></button>
@@ -121,7 +127,8 @@ export function AccountModal({ onClose, onSaved }) {
         <div class="modal-actions">
           <button type="button" class="btn" onClick={onClose}>Cancel</button>
           <button type="submit" class="btn primary" disabled={!name.trim() || submitting}>
-            <Icon name="check" /> {submitting ? 'Saving…' : 'Create account'}
+            <Icon name="check" />
+            {submitting ? 'Saving…' : editing ? 'Save changes' : 'Create account'}
           </button>
         </div>
       </form>

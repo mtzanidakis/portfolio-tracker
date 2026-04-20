@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
 import { AccountModal } from './AccountModal.jsx';
+import { AccountCardMenu } from './AccountCardMenu.jsx';
 import { api } from '../api.js';
 
 export function AccountsPage() {
   const [accounts, setAccounts] = useState([]);
   const [err, setErr] = useState(null);
+  const [modalAccount, setModalAccount] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [menuFor, setMenuFor] = useState(null);
 
   const load = () => {
     api.accounts().then(a => setAccounts(a || [])).catch(e => setErr(e.message));
@@ -14,6 +17,16 @@ export function AccountsPage() {
   useEffect(load, []);
 
   if (err) return <div class="empty">Error: {err}</div>;
+
+  const handleDelete = async (acc) => {
+    if (!confirm(`Delete "${acc.name}"? Accounts referenced by transactions cannot be deleted.`)) return;
+    try {
+      await api.deleteAccount(acc.id);
+      load();
+    } catch (e) {
+      alert(e.message || 'Failed to delete account.');
+    }
+  };
 
   return (
     <>
@@ -30,7 +43,7 @@ export function AccountsPage() {
       <div class="acc-grid">
         {accounts.map(a => (
           <div key={a.id} class="acc-card">
-            <div class="acc-head">
+            <div class="acc-head" style={{ position: 'relative' }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div class="acc-badge" style={{ background: a.color || '#c8502a' }}>{a.short || '??'}</div>
                 <div>
@@ -38,7 +51,19 @@ export function AccountsPage() {
                   <div class="acc-type">{a.type}</div>
                 </div>
               </div>
-              <button class="icon-btn"><Icon name="more" /></button>
+              <button
+                type="button" class="icon-btn"
+                onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === a.id ? null : a.id); }}
+                aria-haspopup="menu" aria-expanded={menuFor === a.id}>
+                <Icon name="more" />
+              </button>
+              {menuFor === a.id && (
+                <AccountCardMenu
+                  onEdit={() => setModalAccount(a)}
+                  onDelete={() => handleDelete(a)}
+                  onClose={() => setMenuFor(null)}
+                />
+              )}
             </div>
 
             <div>
@@ -79,7 +104,14 @@ export function AccountsPage() {
       {showAdd && (
         <AccountModal
           onClose={() => setShowAdd(false)}
-          onSaved={load}
+          onSaved={() => { setShowAdd(false); load(); }}
+        />
+      )}
+      {modalAccount && (
+        <AccountModal
+          account={modalAccount}
+          onClose={() => setModalAccount(null)}
+          onSaved={() => { setModalAccount(null); load(); }}
         />
       )}
     </>

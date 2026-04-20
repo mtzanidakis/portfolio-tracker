@@ -3,7 +3,7 @@ import { Icon } from './Icons.jsx';
 import { fmtMoney } from '../format.js';
 import { api } from '../api.js';
 
-export function AddModal({ onClose, onSaved }) {
+export function AddModal({ user, onClose, onSaved }) {
   const [side, setSide] = useState('buy');
   const [sym, setSym] = useState('');
   const [qty, setQty] = useState('');
@@ -28,8 +28,19 @@ export function AddModal({ onClose, onSaved }) {
     }).catch(e => setError(e.message));
   }, []);
 
-  const asset = assets.find(a => a.symbol === sym);
-  const assetCurrency = asset?.currency || 'USD';
+  const account = accounts.find(a => a.id === accountId);
+  const accountCurrency = account?.currency || 'USD';
+  const baseCurrency = user?.base_currency || 'USD';
+  const needsFx = accountCurrency !== baseCurrency;
+
+  // Price/fee are denominated in the account's currency. If account
+  // and base currencies match, fx_to_base is fixed at 1 and the input
+  // is hidden; otherwise the user supplies the rate locked at trade
+  // time (1 accountCurrency = fxToBase baseCurrency).
+  useEffect(() => {
+    if (!needsFx) setFxToBase('1');
+  }, [needsFx]);
+
   const total = (parseFloat(qty) || 0) * (parseFloat(price) || 0);
 
   const submit = async (e) => {
@@ -45,7 +56,7 @@ export function AddModal({ onClose, onSaved }) {
         qty: parseFloat(qty),
         price: parseFloat(price),
         fee: parseFloat(fee) || 0,
-        fx_to_base: parseFloat(fxToBase) || 1,
+        fx_to_base: needsFx ? (parseFloat(fxToBase) || 1) : 1,
         occurred_at: new Date(date + 'T12:00:00Z').toISOString(),
         note,
       });
@@ -74,11 +85,21 @@ export function AddModal({ onClose, onSaved }) {
           <button type="button" class={side === 'sell' ? 'active sell' : ''} onClick={() => setSide('sell')}>Sell</button>
         </div>
 
-        <div class="field">
-          <label>Asset</label>
-          <select class="select" value={sym} onChange={e => setSym(e.currentTarget.value)}>
-            {assets.map(a => <option key={a.symbol} value={a.symbol}>{a.symbol} — {a.name}</option>)}
-          </select>
+        <div class="row-2">
+          <div class="field">
+            <label>Account</label>
+            <select class="select" value={accountId} onChange={e => setAccountId(parseInt(e.currentTarget.value))}>
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>
+              ))}
+            </select>
+          </div>
+          <div class="field">
+            <label>Asset</label>
+            <select class="select" value={sym} onChange={e => setSym(e.currentTarget.value)}>
+              {assets.map(a => <option key={a.symbol} value={a.symbol}>{a.symbol} — {a.name}</option>)}
+            </select>
+          </div>
         </div>
 
         <div class="row-2">
@@ -88,7 +109,7 @@ export function AddModal({ onClose, onSaved }) {
               value={qty} onInput={e => setQty(e.currentTarget.value)} autoFocus />
           </div>
           <div class="field">
-            <label>Price per unit ({assetCurrency})</label>
+            <label>Price per unit ({accountCurrency})</label>
             <input class="input mono" type="number" step="any" placeholder="0.00"
               value={price} onInput={e => setPrice(e.currentTarget.value)} />
           </div>
@@ -100,25 +121,19 @@ export function AddModal({ onClose, onSaved }) {
             <input class="input mono" type="date" value={date} onInput={e => setDate(e.currentTarget.value)} />
           </div>
           <div class="field">
-            <label>Account</label>
-            <select class="select" value={accountId} onChange={e => setAccountId(parseInt(e.currentTarget.value))}>
-              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div class="row-2">
-          <div class="field">
-            <label>Fee ({assetCurrency})</label>
+            <label>Fee ({accountCurrency})</label>
             <input class="input mono" type="number" step="any" value={fee}
               onInput={e => setFee(e.currentTarget.value)} />
           </div>
+        </div>
+
+        {needsFx && (
           <div class="field">
-            <label>FX rate ({assetCurrency} → base)</label>
+            <label>FX rate (1 {accountCurrency} = ? {baseCurrency}, locked at trade time)</label>
             <input class="input mono" type="number" step="any" value={fxToBase}
               onInput={e => setFxToBase(e.currentTarget.value)} />
           </div>
-        </div>
+        )}
 
         <div class="field">
           <label>Note</label>
@@ -133,11 +148,13 @@ export function AddModal({ onClose, onSaved }) {
           <div>
             <div style={{ fontSize: 11, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total</div>
             <div class="mono" style={{ fontSize: 20, fontWeight: 500, marginTop: 2 }}>
-              {fmtMoney(total, assetCurrency)}
+              {fmtMoney(total, accountCurrency)}
             </div>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'right' }}>
-            {qty && price ? `${qty} ${sym} @ ${fmtMoney(parseFloat(price), assetCurrency)}` : 'Enter quantity & price'}
+            {qty && price
+              ? `${qty} ${sym} @ ${fmtMoney(parseFloat(price), accountCurrency)}`
+              : 'Enter quantity & price'}
           </div>
         </div>
 
