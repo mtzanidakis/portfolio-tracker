@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,8 +36,10 @@ func run() int {
 		addr         = flag.String("addr", envOr("PT_ADDR", ":8082"), "HTTP listen address")
 		dbPath       = flag.String("db", envOr("PT_DB", "./data/pt.db"), "SQLite database path")
 		refreshEvery = flag.Duration("refresh", envDur("PT_PRICE_REFRESH_INTERVAL", 15*time.Minute), "price/fx refresh interval")
-		cgKey        = flag.String("coingecko-api-key", os.Getenv("PT_COINGECKO_API_KEY"), "optional CoinGecko Demo API key")
-		showVersion  = flag.Bool("version", false, "print version and exit")
+		sessionLife  = flag.String("session-lifetime", envOr("PT_SESSION_LIFETIME", "30d"),
+			"browser session lifetime (Go duration with optional 'd' days suffix, e.g. 30d, 720h)")
+		cgKey       = flag.String("coingecko-api-key", os.Getenv("PT_COINGECKO_API_KEY"), "optional CoinGecko Demo API key")
+		showVersion = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
 
@@ -45,9 +48,16 @@ func run() int {
 		return 0
 	}
 
+	lifetime, err := parseLifetime(*sessionLife)
+	if err != nil || lifetime <= 0 {
+		fmt.Fprintf(os.Stderr, "ptd: invalid --session-lifetime %q\n", *sessionLife)
+		return 2
+	}
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	logger.Info("portfolio-tracker starting",
-		"version", version.Version, "addr", *addr, "db", *dbPath, "refresh", *refreshEvery)
+		"version", version.Version, "addr", *addr, "db", *dbPath,
+		"refresh", *refreshEvery, "session_lifetime", lifetime)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -67,8 +77,11 @@ func run() int {
 	svc := prices.New(conn, logger, *cgKey)
 	go svc.Run(ctx, *refreshEvery)
 
+	// Background session-expiry sweep.
+	go runSessionPurge(ctx, conn, logger)
+
 	// HTTP mux: API + embedded frontend.
-	mux := api.NewRouter(conn, api.DefaultSessionLifetime)
+	mux := api.NewRouter(conn, lifetime)
 	mux.Handle("/", web.DefaultHandler())
 
 	srv := &http.Server{
@@ -97,6 +110,42 @@ func run() int {
 	return 0
 }
 
+// parseLifetime accepts Go's time.Duration syntax ("720h", "15m") plus a
+// plain "d" suffix for whole days ("30d"). Days are converted to hours.
+func parseLifetime(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if strings.HasSuffix(s, "d") {
+		n, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+		if err != nil {
+			return 0, err
+		}
+		return time.Duration(n) * 24 * time.Hour, nil
+	}
+	return time.ParseDuration(s)
+}
+
+// runSessionPurge deletes expired sessions every hour until ctx is done.
+func runSessionPurge(ctx context.Context, conn *db.DB, logger *slog.Logger) {
+	const interval = time.Hour
+	if n, err := conn.PurgeExpiredSessions(ctx); err == nil && n > 0 {
+		logger.Info("purged expired sessions", "count", n)
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if n, err := conn.PurgeExpiredSessions(ctx); err != nil {
+				logger.Warn("session purge failed", "err", err)
+			} else if n > 0 {
+				logger.Info("purged expired sessions", "count", n)
+			}
+		}
+	}
+}
+
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -112,7 +161,6 @@ func envDur(key string, def time.Duration) time.Duration {
 	if d, err := time.ParseDuration(v); err == nil {
 		return d
 	}
-	// Accept raw-seconds ints as well for compose-file ergonomics.
 	if n, err := strconv.Atoi(v); err == nil {
 		return time.Duration(n) * time.Second
 	}
