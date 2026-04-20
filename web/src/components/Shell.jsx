@@ -10,6 +10,7 @@ export function Sidebar({ page, setPage, user, onProfile, onTokens, onSignOut })
     { id: 'allocations', label: 'Allocations', icon: 'pie' },
     { id: 'activities',  label: 'Activities',  icon: 'activity' },
     { id: 'accounts',    label: 'Accounts',    icon: 'wallet' },
+    { id: 'assets',      label: 'Assets',      icon: 'coins' },
   ];
   const initials = (user?.name || '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
   return (
