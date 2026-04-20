@@ -51,7 +51,7 @@ func setup(t *testing.T) *testEnv {
 		t.Fatalf("create token: %v", err)
 	}
 
-	srv := httptest.NewServer(NewRouter(d))
+	srv := httptest.NewServer(NewRouter(d, time.Hour))
 	t.Cleanup(srv.Close)
 	return &testEnv{t: t, db: d, srv: srv, user: u, token: plain}
 }

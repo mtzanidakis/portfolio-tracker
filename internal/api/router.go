@@ -2,28 +2,44 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/mtzanidakis/portfolio-tracker/internal/auth"
 	"github.com/mtzanidakis/portfolio-tracker/internal/db"
 )
 
-// NewRouter returns the v1 API mux. /api/v1/version is public; every
-// other route requires a Bearer token. The returned *http.ServeMux can
-// be extended by the caller (e.g., to mount a static-file handler at "/").
-func NewRouter(d *db.DB) *http.ServeMux {
-	mw := &auth.Middleware{DB: d}
+// DefaultSessionLifetime is used when NewRouter is called with a
+// non-positive lifetime.
+const DefaultSessionLifetime = 30 * 24 * time.Hour
+
+// NewRouter returns the v1 API mux. /api/v1/version and /api/v1/login
+// are public; every other route requires either a Bearer API token or
+// a valid pt_session cookie (with X-CSRF-Token header on mutations).
+//
+// The returned *http.ServeMux can be extended by the caller (e.g., to
+// mount a static-file handler at "/").
+func NewRouter(d *db.DB, sessionLifetime time.Duration) *http.ServeMux {
+	if sessionLifetime <= 0 {
+		sessionLifetime = DefaultSessionLifetime
+	}
+	mw := &auth.Middleware{DB: d, SessionLifetime: sessionLifetime}
 	mux := http.NewServeMux()
 
 	// Public
 	mux.HandleFunc("GET /api/v1/version", versionHandler)
+	mux.HandleFunc("POST /api/v1/login", loginHandler(d, sessionLifetime))
 
-	// Protected — bind each route through the auth middleware.
-	protect := func(h http.HandlerFunc) http.Handler {
-		return mw.Handler(h)
-	}
+	protect := func(h http.HandlerFunc) http.Handler { return mw.Handler(h) }
+
+	mux.Handle("POST /api/v1/logout", protect(logoutHandler(d)))
+	mux.Handle("POST /api/v1/password", protect(changePasswordHandler(d)))
 
 	mux.Handle("GET /api/v1/me", protect(meHandler(d)))
 	mux.Handle("PATCH /api/v1/me", protect(updateMeHandler(d)))
+
+	mux.Handle("GET /api/v1/me/tokens", protect(listMyTokensHandler(d)))
+	mux.Handle("POST /api/v1/me/tokens", protect(createMyTokenHandler(d)))
+	mux.Handle("DELETE /api/v1/me/tokens/{id}", protect(revokeMyTokenHandler(d)))
 
 	mux.Handle("GET /api/v1/accounts", protect(listAccountsHandler(d)))
 	mux.Handle("POST /api/v1/accounts", protect(createAccountHandler(d)))

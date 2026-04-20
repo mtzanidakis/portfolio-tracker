@@ -68,7 +68,7 @@ func run() int {
 	go svc.Run(ctx, *refreshEvery)
 
 	// HTTP mux: API + embedded frontend.
-	mux := api.NewRouter(conn)
+	mux := api.NewRouter(conn, api.DefaultSessionLifetime)
 	mux.Handle("/", web.DefaultHandler())
 
 	srv := &http.Server{
