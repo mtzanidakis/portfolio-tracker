@@ -6,35 +6,84 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
 )
 
-// DefaultYahooBaseURL is Yahoo Finance's unofficial v7 quote endpoint.
-const DefaultYahooBaseURL = "https://query1.finance.yahoo.com"
+// DefaultYahooBaseURL is Yahoo Finance's unofficial API base. query2
+// (over query1) is what the browser-based Finance UI talks to; the
+// authenticated quote/chart endpoints live here.
+const DefaultYahooBaseURL = "https://query2.finance.yahoo.com"
 
-// YahooProvider fetches quotes from Yahoo Finance. No API key required;
-// a custom User-Agent header is mandatory (Yahoo blocks the Go default).
+const (
+	yahooCookieURL = "https://fc.yahoo.com/"
+	yahooCrumbPath = "/v1/test/getcrumb"
+	// Yahoo rejects non-browser User-Agents. The CLI at
+	// github.com/mtzanidakis/yfinance-cli uses the same UA with good
+	// success; we mirror it to keep our footprint identical.
+	yahooUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+// YahooProvider fetches quotes from Yahoo Finance. It performs the
+// cookie + crumb handshake the site demands for anonymous clients: a
+// GET to fc.yahoo.com seeds an A3 cookie, a GET to /v1/test/getcrumb
+// returns a crumb string, and every subsequent API call must carry both
+// the cookie and the crumb query parameter.
 type YahooProvider struct {
-	BaseURL string
-	HTTP    *http.Client
+	BaseURL   string
+	CookieURL string // overridable for tests
+	HTTP      *http.Client
+
+	mu    sync.Mutex
+	crumb string
 }
 
-// NewYahoo returns a provider pointing at the public Yahoo endpoint.
-func NewYahoo(httpClient *http.Client) *YahooProvider {
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 10 * time.Second}
+// yahooPSL tricks cookiejar into sharing cookies across yahoo.com
+// subdomains (fc.yahoo.com and query2.finance.yahoo.com). Without it
+// the A3 cookie set by fc.yahoo.com is never sent to the query host.
+type yahooPSL struct{}
+
+// PublicSuffix returns the single-label TLD of the given domain. This
+// naive implementation lets cookiejar treat `yahoo.com` itself as a
+// public suffix, which in turn allows `fc.yahoo.com` and
+// `query2.finance.yahoo.com` to share cookies.
+func (yahooPSL) PublicSuffix(domain string) string {
+	if i := strings.LastIndex(domain, "."); i >= 0 {
+		return domain[i+1:]
 	}
-	return &YahooProvider{BaseURL: DefaultYahooBaseURL, HTTP: httpClient}
+	return domain
+}
+
+// String identifies this public-suffix list in diagnostic output.
+func (yahooPSL) String() string { return "yahoo-psl" }
+
+// NewYahoo returns a provider pointing at the public Yahoo endpoint.
+// If httpClient is nil a default client is created with a cookie jar;
+// otherwise the caller's jar is reused (a default jar is installed if
+// absent).
+func NewYahoo(httpClient *http.Client) *YahooProvider {
+	jar, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: yahooPSL{}})
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 15 * time.Second, Jar: jar}
+	} else if httpClient.Jar == nil {
+		httpClient.Jar = jar
+	}
+	return &YahooProvider{
+		BaseURL:   DefaultYahooBaseURL,
+		CookieURL: yahooCookieURL,
+		HTTP:      httpClient,
+	}
 }
 
 // Name returns "yahoo".
 func (y *YahooProvider) Name() string { return "yahoo" }
 
-type yahooResponse struct {
+type yahooQuoteResponse struct {
 	QuoteResponse struct {
 		Result []struct {
 			Symbol             string  `json:"symbol"`
@@ -45,37 +94,28 @@ type yahooResponse struct {
 	} `json:"quoteResponse"`
 }
 
-// Fetch queries Yahoo's /v7/finance/quote endpoint with a comma-separated
-// symbol list and returns the latest regular-market price for each.
+// Fetch queries /v7/finance/quote?symbols=... in one request. The
+// crumb is added automatically; on 401/403 the crumb is refreshed and
+// the request is retried once.
 func (y *YahooProvider) Fetch(ctx context.Context, symbols []string) ([]PriceQuote, error) {
 	if len(symbols) == 0 {
 		return nil, nil
 	}
-	u := y.BaseURL + "/v7/finance/quote?symbols=" + url.QueryEscape(strings.Join(symbols, ","))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	params := url.Values{"symbols": {strings.Join(symbols, ",")}}
+	body, err := y.authedGet(ctx, "/v7/finance/quote", params)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "portfolio-tracker/1.0")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := y.HTTP.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("yahoo: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("yahoo: status %d: %s", resp.StatusCode, body)
-	}
-
-	var parsed yahooResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+	var parsed yahooQuoteResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("yahoo decode: %w", err)
 	}
 	now := time.Now().UTC()
 	out := make([]PriceQuote, 0, len(parsed.QuoteResponse.Result))
 	for _, r := range parsed.QuoteResponse.Result {
+		if r.RegularMarketPrice == 0 {
+			continue
+		}
 		out = append(out, PriceQuote{
 			Symbol:    r.Symbol,
 			Price:     r.RegularMarketPrice,
@@ -84,4 +124,110 @@ func (y *YahooProvider) Fetch(ctx context.Context, symbols []string) ([]PriceQuo
 		})
 	}
 	return out, nil
+}
+
+// authedGet performs a crumb-protected GET, refreshing the crumb once
+// on 401/403.
+func (y *YahooProvider) authedGet(ctx context.Context, path string, params url.Values) ([]byte, error) {
+	crumb, err := y.ensureCrumb(ctx)
+	if err != nil {
+		return nil, err
+	}
+	body, status, err := y.doGet(ctx, path, params, crumb)
+	if err != nil {
+		return nil, err
+	}
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		y.mu.Lock()
+		y.crumb = ""
+		y.mu.Unlock()
+		crumb, err = y.ensureCrumb(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("refresh crumb: %w", err)
+		}
+		body, status, err = y.doGet(ctx, path, params, crumb)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("yahoo: status %d: %s", status, truncate(body, 200))
+	}
+	return body, nil
+}
+
+func (y *YahooProvider) ensureCrumb(ctx context.Context) (string, error) {
+	y.mu.Lock()
+	defer y.mu.Unlock()
+	if y.crumb != "" {
+		return y.crumb, nil
+	}
+	if err := y.fetchCrumbLocked(ctx); err != nil {
+		return "", err
+	}
+	return y.crumb, nil
+}
+
+func (y *YahooProvider) fetchCrumbLocked(ctx context.Context) error {
+	// 1. Seed cookies. fc.yahoo.com returns 404 but writes the A3 cookie.
+	cReq, err := http.NewRequestWithContext(ctx, http.MethodGet, y.CookieURL, nil)
+	if err != nil {
+		return err
+	}
+	cReq.Header.Set("User-Agent", yahooUA)
+	cResp, err := y.HTTP.Do(cReq)
+	if err != nil {
+		return fmt.Errorf("yahoo cookie: %w", err)
+	}
+	_ = cResp.Body.Close()
+
+	// 2. Fetch the crumb using the cookie set in step 1.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, y.BaseURL+yahooCrumbPath, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", yahooUA)
+	resp, err := y.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("yahoo crumb: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return fmt.Errorf("yahoo crumb: status %d: %s", resp.StatusCode, body)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("yahoo crumb read: %w", err)
+	}
+	y.crumb = strings.TrimSpace(string(body))
+	return nil
+}
+
+func (y *YahooProvider) doGet(ctx context.Context, path string, params url.Values, crumb string) ([]byte, int, error) {
+	if params == nil {
+		params = url.Values{}
+	}
+	params.Set("crumb", crumb)
+	u := y.BaseURL + path + "?" + params.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("User-Agent", yahooUA)
+	req.Header.Set("Accept", "application/json")
+	resp, err := y.HTTP.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("yahoo: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	return body, resp.StatusCode, nil
+}
+
+func truncate(b []byte, n int) string {
+	if len(b) > n {
+		return string(b[:n]) + "…"
+	}
+	return string(b)
 }
