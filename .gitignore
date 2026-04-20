@@ -1,6 +1,9 @@
 # Binaries
 /bin/
 
+# goreleaser output
+/dist/
+
 # Data
 /data/*
 !/data/.gitkeep
