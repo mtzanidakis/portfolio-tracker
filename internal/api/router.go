@@ -6,6 +6,7 @@ import (
 
 	"github.com/mtzanidakis/portfolio-tracker/internal/auth"
 	"github.com/mtzanidakis/portfolio-tracker/internal/db"
+	"github.com/mtzanidakis/portfolio-tracker/internal/prices"
 )
 
 // DefaultSessionLifetime is used when NewRouter is called with a
@@ -16,11 +17,18 @@ const DefaultSessionLifetime = 30 * 24 * time.Hour
 // are public; every other route requires either a Bearer API token or
 // a valid pt_session cookie (with X-CSRF-Token header on mutations).
 //
+// An optional FxHistoryProvider overrides the default Frankfurter
+// backing for GET /api/v1/fx/rate — useful in tests.
+//
 // The returned *http.ServeMux can be extended by the caller (e.g., to
 // mount a static-file handler at "/").
-func NewRouter(d *db.DB, sessionLifetime time.Duration) *http.ServeMux {
+func NewRouter(d *db.DB, sessionLifetime time.Duration, fxHistory ...prices.FxHistoryProvider) *http.ServeMux {
 	if sessionLifetime <= 0 {
 		sessionLifetime = DefaultSessionLifetime
+	}
+	var fxHist prices.FxHistoryProvider = prices.NewFrankfurter(nil)
+	if len(fxHistory) > 0 && fxHistory[0] != nil {
+		fxHist = fxHistory[0]
 	}
 	mw := &auth.Middleware{DB: d, SessionLifetime: sessionLifetime}
 	mux := http.NewServeMux()
@@ -61,6 +69,8 @@ func NewRouter(d *db.DB, sessionLifetime time.Duration) *http.ServeMux {
 	mux.Handle("GET /api/v1/holdings", protect(holdingsHandler(d)))
 	mux.Handle("GET /api/v1/allocations", protect(allocationsHandler(d)))
 	mux.Handle("GET /api/v1/performance", protect(performanceHandler(d)))
+
+	mux.Handle("GET /api/v1/fx/rate", protect(fxRateHandler(fxHist)))
 
 	return mux
 }

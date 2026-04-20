@@ -39,3 +39,9 @@ type FxProvider interface {
 	// USD itself may be included with rate 1.0.
 	Fetch(ctx context.Context, currencies []domain.Currency) (map[domain.Currency]float64, error)
 }
+
+// FxHistoryProvider fetches an historical FX rate for a specific pair.
+// at may be zero to indicate "latest".
+type FxHistoryProvider interface {
+	FetchRate(ctx context.Context, from, to domain.Currency, at time.Time) (float64, error)
+}

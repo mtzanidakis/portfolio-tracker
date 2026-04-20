@@ -6,7 +6,7 @@ import { AllocationsPage } from './components/AllocationsPage.jsx';
 import { ActivitiesPage } from './components/ActivitiesPage.jsx';
 import { AccountsPage } from './components/AccountsPage.jsx';
 import { AssetsPage } from './components/AssetsPage.jsx';
-import { AddModal } from './components/AddModal.jsx';
+import { TxModal } from './components/TxModal.jsx';
 import { LoginForm } from './components/LoginForm.jsx';
 import { ProfileModal } from './components/ProfileModal.jsx';
 import { TokensModal } from './components/TokensModal.jsx';
@@ -104,14 +104,14 @@ export function App() {
         <div class="content">
           {page === 'performance' && <PerformancePage {...pageProps} />}
           {page === 'allocations' && <AllocationsPage {...pageProps} />}
-          {page === 'activities'  && <ActivitiesPage  {...pageProps} openModal={() => setShowAddTx(true)} />}
+          {page === 'activities'  && <ActivitiesPage  {...pageProps} user={user} />}
           {page === 'accounts'    && <AccountsPage    {...pageProps} />}
           {page === 'assets'      && <AssetsPage      {...pageProps} />}
         </div>
       </main>
 
       {showAddTx && (
-        <AddModal user={user}
+        <TxModal user={user}
           onClose={() => setShowAddTx(false)}
           onSaved={() => setRefreshTick(t => t + 1)} />
       )}

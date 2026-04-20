@@ -3,16 +3,29 @@ import { Icon } from './Icons.jsx';
 import { fmtMoney } from '../format.js';
 import { api } from '../api.js';
 
-export function AddModal({ user, onClose, onSaved }) {
-  const [side, setSide] = useState('buy');
-  const [sym, setSym] = useState('');
-  const [qty, setQty] = useState('');
-  const [price, setPrice] = useState('');
-  const [fee, setFee] = useState('0');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [accountId, setAccountId] = useState(0);
-  const [fxToBase, setFxToBase] = useState('1');
-  const [note, setNote] = useState('');
+// Modal for creating or editing a transaction. Pass `transaction` to
+// enter edit mode. User is required so we know the base currency for
+// the FX conversion step.
+export function TxModal({ transaction, user, onClose, onSaved }) {
+  const editing = !!transaction;
+
+  const [side, setSide] = useState(transaction?.side || 'buy');
+  const [sym, setSym] = useState(transaction?.asset_symbol || '');
+  const [qty, setQty] = useState(transaction ? String(transaction.qty) : '');
+  const [price, setPrice] = useState(transaction ? String(transaction.price) : '');
+  const [fee, setFee] = useState(transaction ? String(transaction.fee || 0) : '0');
+  const [date, setDate] = useState(
+    transaction?.occurred_at
+      ? transaction.occurred_at.slice(0, 10)
+      : new Date().toISOString().slice(0, 10),
+  );
+  const [accountId, setAccountId] = useState(transaction?.account_id || 0);
+  const [fxToBase, setFxToBase] = useState(
+    transaction ? String(transaction.fx_to_base || 1) : '1',
+  );
+  const [fxAuto, setFxAuto] = useState(!editing); // default to auto for new tx
+  const [fxLoading, setFxLoading] = useState(false);
+  const [note, setNote] = useState(transaction?.note || '');
   const [assets, setAssets] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState('');
@@ -23,9 +36,10 @@ export function AddModal({ user, onClose, onSaved }) {
       const nonCash = (a || []).filter(x => x.type !== 'cash');
       setAssets(nonCash);
       setAccounts(accs || []);
-      if (nonCash.length) setSym(nonCash[0].symbol);
-      if (accs?.length) setAccountId(accs[0].id);
+      if (!sym && nonCash.length) setSym(nonCash[0].symbol);
+      if (!accountId && accs?.length) setAccountId(accs[0].id);
     }).catch(e => setError(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const account = accounts.find(a => a.id === accountId);
@@ -33,13 +47,23 @@ export function AddModal({ user, onClose, onSaved }) {
   const baseCurrency = user?.base_currency || 'USD';
   const needsFx = accountCurrency !== baseCurrency;
 
-  // Price/fee are denominated in the account's currency. If account
-  // and base currencies match, fx_to_base is fixed at 1 and the input
-  // is hidden; otherwise the user supplies the rate locked at trade
-  // time (1 accountCurrency = fxToBase baseCurrency).
+  // Auto-calculate fx_to_base whenever account / base / date changes.
+  // Skipped when not needed (same currency) or when the user has
+  // toggled auto off.
   useEffect(() => {
-    if (!needsFx) setFxToBase('1');
-  }, [needsFx]);
+    if (!needsFx) {
+      setFxToBase('1');
+      return;
+    }
+    if (!fxAuto) return;
+    let cancelled = false;
+    setFxLoading(true);
+    api.fxRate(accountCurrency, baseCurrency, date)
+      .then(r => { if (!cancelled) setFxToBase(String(r.rate)); })
+      .catch(() => { /* keep current value on failure */ })
+      .finally(() => { if (!cancelled) setFxLoading(false); });
+    return () => { cancelled = true; };
+  }, [accountCurrency, baseCurrency, date, needsFx, fxAuto]);
 
   const total = (parseFloat(qty) || 0) * (parseFloat(price) || 0);
 
@@ -49,7 +73,7 @@ export function AddModal({ user, onClose, onSaved }) {
     setSubmitting(true);
     setError('');
     try {
-      await api.createTx({
+      const payload = {
         account_id: accountId,
         asset_symbol: sym,
         side,
@@ -59,7 +83,12 @@ export function AddModal({ user, onClose, onSaved }) {
         fx_to_base: needsFx ? (parseFloat(fxToBase) || 1) : 1,
         occurred_at: new Date(date + 'T12:00:00Z').toISOString(),
         note,
-      });
+      };
+      if (editing) {
+        await api.updateTx(transaction.id, payload);
+      } else {
+        await api.createTx(payload);
+      }
       if (onSaved) onSaved();
       onClose();
     } catch (err) {
@@ -74,8 +103,10 @@ export function AddModal({ user, onClose, onSaved }) {
       <form class="modal" onSubmit={submit}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h2 class="modal-title">Add transaction</h2>
-            <div class="modal-sub">Record a buy or sell manually.</div>
+            <h2 class="modal-title">{editing ? 'Edit transaction' : 'Add transaction'}</h2>
+            <div class="modal-sub">
+              {editing ? 'Change any field and save.' : 'Record a buy or sell manually.'}
+            </div>
           </div>
           <button type="button" class="icon-btn" onClick={onClose}><Icon name="close" /></button>
         </div>
@@ -129,9 +160,21 @@ export function AddModal({ user, onClose, onSaved }) {
 
         {needsFx && (
           <div class="field">
-            <label>FX rate (1 {accountCurrency} = ? {baseCurrency}, locked at trade time)</label>
+            <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>FX rate (1 {accountCurrency} = ? {baseCurrency}, locked at trade time)</span>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                {fxLoading && <span>fetching…</span>}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={fxAuto}
+                    onChange={e => setFxAuto(e.currentTarget.checked)}
+                    style={{ margin: 0 }} />
+                  auto
+                </label>
+              </span>
+            </label>
             <input class="input mono" type="number" step="any" value={fxToBase}
-              onInput={e => setFxToBase(e.currentTarget.value)} />
+              disabled={fxAuto && fxLoading}
+              onInput={e => { setFxToBase(e.currentTarget.value); setFxAuto(false); }} />
           </div>
         )}
 
@@ -163,7 +206,11 @@ export function AddModal({ user, onClose, onSaved }) {
         <div class="modal-actions">
           <button type="button" class="btn" onClick={onClose}>Cancel</button>
           <button type="submit" class="btn primary" disabled={!qty || !price || submitting}>
-            <Icon name="check" /> {submitting ? 'Saving…' : side === 'buy' ? 'Record buy' : 'Record sell'}
+            <Icon name="check" />
+            {submitting
+              ? 'Saving…'
+              : editing ? 'Save changes'
+              : side === 'buy' ? 'Record buy' : 'Record sell'}
           </button>
         </div>
       </form>

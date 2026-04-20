@@ -82,7 +82,13 @@ export const api = {
 
   transactions:  (qs='') => request('GET',   '/api/v1/transactions' + (qs || '')),
   createTx:      (p)     => request('POST',  '/api/v1/transactions', p),
+  updateTx:      (id, p) => request('PATCH', `/api/v1/transactions/${id}`, p),
   deleteTx:      (id)    => request('DELETE', `/api/v1/transactions/${id}`),
+
+  // --- FX ---
+  fxRate: (from, to, at) =>
+    request('GET', `/api/v1/fx/rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}` +
+      (at ? `&at=${encodeURIComponent(at)}` : '')),
 
   holdings:      ()          => request('GET', '/api/v1/holdings'),
   allocations:   (g='asset') => request('GET', '/api/v1/allocations?group=' + g),

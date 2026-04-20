@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
+import { TxModal } from './TxModal.jsx';
 import { fmtMoney, fmtNum, fmtDate } from '../format.js';
 import { api } from '../api.js';
 
-export function ActivitiesPage({ privacy, currency, openModal }) {
+export function ActivitiesPage({ privacy, currency, user }) {
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [rows, setRows] = useState([]);
   const [assets, setAssets] = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [editTx, setEditTx] = useState(null);
   const [err, setErr] = useState(null);
 
   async function load() {
@@ -36,12 +38,19 @@ export function ActivitiesPage({ privacy, currency, openModal }) {
       (assetMap[tx.asset_symbol]?.name || '').toLowerCase().includes(q))
   );
 
-  // Convert every row to the user's base currency via the fx_to_base
-  // value locked at trade time. Without this the summary mixes
-  // currencies under a single label.
   const inBase = (tx) => tx.qty * tx.price * (tx.fx_to_base || 1);
   const totalBuys = rows.filter(a => a.side === 'buy').reduce((s, a) => s + inBase(a), 0);
   const totalSells = rows.filter(a => a.side === 'sell').reduce((s, a) => s + inBase(a), 0);
+
+  const handleDelete = async (tx) => {
+    if (!confirm(`Delete this ${tx.side} of ${tx.qty} ${tx.asset_symbol}?`)) return;
+    try {
+      await api.deleteTx(tx.id);
+      load();
+    } catch (e) {
+      alert(e.message || 'Failed to delete transaction.');
+    }
+  };
 
   return (
     <>
@@ -105,6 +114,7 @@ export function ActivitiesPage({ privacy, currency, openModal }) {
               <th style={{ textAlign: 'right' }}>Total</th>
               <th>Account</th>
               <th>Note</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -112,7 +122,7 @@ export function ActivitiesPage({ privacy, currency, openModal }) {
               const asset = assetMap[tx.asset_symbol];
               const acc = accMap[tx.account_id];
               const total = tx.qty * tx.price;
-              const assetCur = asset?.currency || 'USD';
+              const accCur = acc?.currency || asset?.currency || 'USD';
               return (
                 <tr key={tx.id}>
                   <td class="mono" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
@@ -121,7 +131,7 @@ export function ActivitiesPage({ privacy, currency, openModal }) {
                   <td><span class={`pill ${tx.side}`}>{tx.side === 'buy' ? 'Buy' : 'Sell'}</span></td>
                   <td>
                     <div class="ticker">
-                      <div class="ticker-icon" style={{ background: '#999', width: 26, height: 26, fontSize: 10 }}>
+                      <div class="ticker-icon" style={{ background: asset?.color || '#999', width: 26, height: 26, fontSize: 10 }}>
                         {tx.asset_symbol.slice(0, 2)}
                       </div>
                       <div class="ticker-meta">
@@ -132,22 +142,39 @@ export function ActivitiesPage({ privacy, currency, openModal }) {
                   </td>
                   <td class="num" style={{ textAlign: 'right' }}>{fmtNum(tx.qty, 4)}</td>
                   <td class="num" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
-                    {fmtMoney(tx.price, assetCur)}
+                    {fmtMoney(tx.price, accCur)}
                   </td>
                   <td class="num" style={{ textAlign: 'right' }}>
-                    {privacy ? <span class="masked">{fmtMoney(total, assetCur)}</span> : fmtMoney(total, assetCur)}
+                    {privacy ? <span class="masked">{fmtMoney(total, accCur)}</span> : fmtMoney(total, accCur)}
                   </td>
                   <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{acc?.name}</td>
                   <td style={{ fontSize: 12, color: 'var(--text-faint)' }}>{tx.note || '—'}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button class="icon-btn" title="Edit" onClick={() => setEditTx(tx)}>
+                      <Icon name="edit" />
+                    </button>
+                    <button class="icon-btn" title="Delete" onClick={() => handleDelete(tx)}>
+                      <Icon name="trash" />
+                    </button>
+                  </td>
                 </tr>
               );
             })}
             {filtered.length === 0 && (
-              <tr><td colspan="8" class="empty">No transactions match your filter.</td></tr>
+              <tr><td colspan="9" class="empty">No transactions match your filter.</td></tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {editTx && (
+        <TxModal
+          transaction={editTx}
+          user={user}
+          onClose={() => setEditTx(null)}
+          onSaved={() => { setEditTx(null); load(); }}
+        />
+      )}
     </>
   );
 }
