@@ -1,0 +1,16 @@
+{
+  "name": "portfolio-tracker-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:dev": "NODE_ENV=development node build.mjs"
+  },
+  "dependencies": {
+    "preact": "^10.26.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
