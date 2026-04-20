@@ -83,6 +83,60 @@ func NewYahoo(httpClient *http.Client) *YahooProvider {
 // Name returns "yahoo".
 func (y *YahooProvider) Name() string { return "yahoo" }
 
+type yahooChartResponse struct {
+	Chart struct {
+		Result []struct {
+			Meta struct {
+				Symbol   string `json:"symbol"`
+				Currency string `json:"currency"`
+			} `json:"meta"`
+			Timestamp  []int64 `json:"timestamp"`
+			Indicators struct {
+				Quote []struct {
+					Close []float64 `json:"close"`
+				} `json:"quote"`
+			} `json:"indicators"`
+		} `json:"result"`
+	} `json:"chart"`
+}
+
+// FetchHistory pulls ~1y of daily closes for symbol via the chart
+// endpoint. Returns snapshots denominated in the asset's native
+// currency (as reported by Yahoo).
+func (y *YahooProvider) FetchHistory(ctx context.Context, symbol string) ([]HistoricalSnapshot, error) {
+	params := url.Values{
+		"range":    {"1y"},
+		"interval": {"1d"},
+	}
+	body, err := y.authedGet(ctx, "/v8/finance/chart/"+url.PathEscape(symbol), params)
+	if err != nil {
+		return nil, err
+	}
+	var parsed yahooChartResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("yahoo chart decode: %w", err)
+	}
+	if len(parsed.Chart.Result) == 0 || len(parsed.Chart.Result[0].Indicators.Quote) == 0 {
+		return nil, nil
+	}
+	r := parsed.Chart.Result[0]
+	closes := r.Indicators.Quote[0].Close
+	cur := domain.Currency(strings.ToUpper(r.Meta.Currency))
+	out := make([]HistoricalSnapshot, 0, len(r.Timestamp))
+	for i, ts := range r.Timestamp {
+		if i >= len(closes) || closes[i] == 0 {
+			continue
+		}
+		out = append(out, HistoricalSnapshot{
+			Symbol:   r.Meta.Symbol,
+			At:       time.Unix(ts, 0).UTC(),
+			Price:    closes[i],
+			Currency: cur,
+		})
+	}
+	return out, nil
+}
+
 type yahooQuoteResponse struct {
 	QuoteResponse struct {
 		Result []struct {

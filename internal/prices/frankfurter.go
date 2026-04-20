@@ -115,6 +115,50 @@ func (f *FrankfurterProvider) FetchRate(ctx context.Context, from, to domain.Cur
 	return 0, fmt.Errorf("no %s→%s rate in response", from, to)
 }
 
+// FetchRange queries the timeseries endpoint for USD→currency rates
+// across [from, to] and returns them inverted as "1 c = X USD"
+// HistoricalFxRate entries (one per day per currency).
+func (f *FrankfurterProvider) FetchRange(ctx context.Context, currencies []domain.Currency, from, to time.Time) ([]HistoricalFxRate, error) {
+	quotes := make([]string, 0, len(currencies))
+	for _, c := range currencies {
+		if c == domain.USD {
+			continue
+		}
+		if !slices.Contains(quotes, string(c)) {
+			quotes = append(quotes, string(c))
+		}
+	}
+	if len(quotes) == 0 || from.After(to) {
+		return nil, nil
+	}
+	q := url.Values{
+		"base":   {"USD"},
+		"quotes": {strings.Join(quotes, ",")},
+		"from":   {from.Format("2006-01-02")},
+		"to":     {to.Format("2006-01-02")},
+	}
+	parsed, err := f.getRates(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]HistoricalFxRate, 0, len(parsed))
+	for _, r := range parsed {
+		if r.Rate == 0 {
+			continue
+		}
+		at, err := time.Parse("2006-01-02", r.Date)
+		if err != nil {
+			continue
+		}
+		out = append(out, HistoricalFxRate{
+			Currency: domain.Currency(r.Quote),
+			At:       at,
+			USDRate:  1.0 / r.Rate,
+		})
+	}
+	return out, nil
+}
+
 func (f *FrankfurterProvider) getRates(ctx context.Context, q url.Values) ([]frankfurterV2Rate, error) {
 	u := f.BaseURL + "/rates?" + q.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)

@@ -93,4 +93,5 @@ export const api = {
   holdings:      ()          => request('GET', '/api/v1/holdings'),
   allocations:   (g='asset') => request('GET', '/api/v1/allocations?group=' + g),
   performance:   (tf='6M')   => request('GET', '/api/v1/performance?tf=' + tf),
+  refreshPrices: ()          => request('POST', '/api/v1/prices/refresh'),
 };

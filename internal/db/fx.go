@@ -64,6 +64,37 @@ func (db *DB) GetFxRateAt(ctx context.Context, currency domain.Currency, at time
 	return r, nil
 }
 
+// ListFxRates returns every stored rate for currency in the inclusive
+// date range, ordered ascending by `at`. Useful for building time
+// series without issuing one query per day.
+func (db *DB) ListFxRates(ctx context.Context, currency domain.Currency, from, to time.Time) ([]FxRate, error) {
+	rows, err := db.QueryContext(ctx, `
+        SELECT currency, at, usd_rate
+          FROM fx_rates
+         WHERE currency = ? AND at >= ? AND at <= ?
+         ORDER BY at ASC`, string(currency), from, to)
+	if err != nil {
+		return nil, fmt.Errorf("query fx: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []FxRate
+	for rows.Next() {
+		var (
+			r       FxRate
+			curStr  string
+			atStamp time.Time
+		)
+		if err := rows.Scan(&curStr, &atStamp, &r.USDRate); err != nil {
+			return nil, fmt.Errorf("scan fx: %w", err)
+		}
+		r.Currency = domain.Currency(curStr)
+		r.At = atStamp
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // SetLatestFxRate upserts the most-current FX quote for a currency.
 func (db *DB) SetLatestFxRate(ctx context.Context, r LatestFxRate) error {
 	if !r.Currency.Valid() {

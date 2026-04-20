@@ -45,3 +45,31 @@ type FxProvider interface {
 type FxHistoryProvider interface {
 	FetchRate(ctx context.Context, from, to domain.Currency, at time.Time) (float64, error)
 }
+
+// HistoricalSnapshot is a dated price point (typically a daily close).
+// Price is denominated in Currency — usually the asset's native
+// currency for Yahoo, USD for CoinGecko.
+type HistoricalSnapshot struct {
+	Symbol   string
+	At       time.Time
+	Price    float64
+	Currency domain.Currency
+}
+
+// HistoryProvider can fetch daily price history for a single external
+// identifier (ticker / coin id). Implemented by Yahoo + CoinGecko.
+type HistoryProvider interface {
+	FetchHistory(ctx context.Context, externalID string) ([]HistoricalSnapshot, error)
+}
+
+// HistoricalFxRate is a dated FX quote expressed as "1 Currency = X USD".
+type HistoricalFxRate struct {
+	Currency domain.Currency
+	At       time.Time
+	USDRate  float64
+}
+
+// FxRangeProvider fetches historical FX rates for a range of dates.
+type FxRangeProvider interface {
+	FetchRange(ctx context.Context, currencies []domain.Currency, from, to time.Time) ([]HistoricalFxRate, error)
+}

@@ -90,3 +90,51 @@ func (c *CoinGeckoProvider) Fetch(ctx context.Context, ids []string) ([]PriceQuo
 	}
 	return out, nil
 }
+
+type coingeckoChart struct {
+	Prices [][]float64 `json:"prices"` // pairs of [ms_epoch, price_usd]
+}
+
+// FetchHistory pulls ~1y of daily USD closes for the given CoinGecko
+// coin id via /coins/{id}/market_chart?vs_currency=usd&days=365.
+func (c *CoinGeckoProvider) FetchHistory(ctx context.Context, id string) ([]HistoricalSnapshot, error) {
+	u := c.BaseURL + "/coins/" + url.PathEscape(id) + "/market_chart?" + url.Values{
+		"vs_currency": {"usd"},
+		"days":        {"365"},
+		"interval":    {"daily"},
+	}.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if c.APIKey != "" {
+		req.Header.Set("x-cg-demo-api-key", c.APIKey)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("coingecko history: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("coingecko history: status %d: %s", resp.StatusCode, body)
+	}
+	var parsed coingeckoChart
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return nil, fmt.Errorf("coingecko history decode: %w", err)
+	}
+	out := make([]HistoricalSnapshot, 0, len(parsed.Prices))
+	for _, pair := range parsed.Prices {
+		if len(pair) < 2 || pair[1] == 0 {
+			continue
+		}
+		out = append(out, HistoricalSnapshot{
+			Symbol:   id,
+			At:       time.UnixMilli(int64(pair[0])).UTC(),
+			Price:    pair[1],
+			Currency: domain.USD,
+		})
+	}
+	return out, nil
+}
