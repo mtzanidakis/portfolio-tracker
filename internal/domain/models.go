@@ -3,12 +3,26 @@ package domain
 import "time"
 
 // User is a human principal that owns accounts, transactions, and tokens.
+// PasswordHash is argon2id-encoded; an empty value means the user cannot
+// log in from a browser and must authenticate with an API token instead.
 type User struct {
 	ID           int64     `json:"id"`
 	Email        string    `json:"email"`
 	Name         string    `json:"name"`
 	BaseCurrency Currency  `json:"base_currency"`
 	CreatedAt    time.Time `json:"created_at"`
+	PasswordHash string    `json:"-"`
+}
+
+// Session is a browser-side authentication record. A copy of the session
+// id is held in an HttpOnly cookie; the server consults this row on every
+// cookie-authenticated request.
+type Session struct {
+	ID         string     `json:"id"`
+	UserID     int64      `json:"user_id"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 }
 
 // Account is a label grouping for holdings (brokerage, exchange, wallet, cash).

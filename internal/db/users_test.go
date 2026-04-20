@@ -11,7 +11,10 @@ func TestUserCRUD(t *testing.T) {
 	db := newTestDB(t)
 	ctx := t.Context()
 
-	u := &domain.User{Email: "a@b.io", Name: "Alice", BaseCurrency: domain.EUR}
+	u := &domain.User{
+		Email: "a@b.io", Name: "Alice",
+		PasswordHash: "hash-abc", BaseCurrency: domain.EUR,
+	}
 	if err := db.CreateUser(ctx, u); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -25,6 +28,9 @@ func TestUserCRUD(t *testing.T) {
 	}
 	if got.Email != u.Email || got.BaseCurrency != domain.EUR {
 		t.Errorf("mismatch: %+v", got)
+	}
+	if got.PasswordHash != "hash-abc" {
+		t.Errorf("password hash lost: %q", got.PasswordHash)
 	}
 
 	byEmail, err := db.GetUserByEmail(ctx, u.Email)
@@ -72,6 +78,58 @@ func TestUpdateBaseCurrency_NotFound(t *testing.T) {
 	db := newTestDB(t)
 	err := db.UpdateUserBaseCurrency(t.Context(), 42, domain.USD)
 	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestUpdateUserProfile(t *testing.T) {
+	db := newTestDB(t)
+	ctx := t.Context()
+	u := mustCreateUser(t, db, "prof@test.io")
+
+	if err := db.UpdateUserProfile(ctx, u.ID, "New Name", "new@test.io"); err != nil {
+		t.Fatalf("both: %v", err)
+	}
+	got, _ := db.GetUser(ctx, u.ID)
+	if got.Name != "New Name" || got.Email != "new@test.io" {
+		t.Errorf("both not updated: %+v", got)
+	}
+
+	// Partial updates.
+	_ = db.UpdateUserProfile(ctx, u.ID, "Solo Name", "")
+	got, _ = db.GetUser(ctx, u.ID)
+	if got.Name != "Solo Name" || got.Email != "new@test.io" {
+		t.Errorf("name-only: %+v", got)
+	}
+	_ = db.UpdateUserProfile(ctx, u.ID, "", "solo@test.io")
+	got, _ = db.GetUser(ctx, u.ID)
+	if got.Name != "Solo Name" || got.Email != "solo@test.io" {
+		t.Errorf("email-only: %+v", got)
+	}
+
+	// No-op with both empty.
+	if err := db.UpdateUserProfile(ctx, u.ID, "", ""); err != nil {
+		t.Errorf("noop error: %v", err)
+	}
+}
+
+func TestUpdateUserPassword(t *testing.T) {
+	db := newTestDB(t)
+	ctx := t.Context()
+	u := mustCreateUser(t, db, "pw@test.io")
+
+	if err := db.UpdateUserPassword(ctx, u.ID, "new-hash"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, _ := db.GetUser(ctx, u.ID)
+	if got.PasswordHash != "new-hash" {
+		t.Errorf("hash: %q", got.PasswordHash)
+	}
+}
+
+func TestUpdateUserPassword_NotFound(t *testing.T) {
+	db := newTestDB(t)
+	if err := db.UpdateUserPassword(t.Context(), 999, "x"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
