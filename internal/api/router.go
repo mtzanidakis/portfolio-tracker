@@ -7,9 +7,10 @@ import (
 	"github.com/mtzanidakis/portfolio-tracker/internal/db"
 )
 
-// NewRouter returns the root http.Handler exposing the v1 API. /api/v1/version
-// is public; everything else requires a Bearer token.
-func NewRouter(d *db.DB) http.Handler {
+// NewRouter returns the v1 API mux. /api/v1/version is public; every
+// other route requires a Bearer token. The returned *http.ServeMux can
+// be extended by the caller (e.g., to mount a static-file handler at "/").
+func NewRouter(d *db.DB) *http.ServeMux {
 	mw := &auth.Middleware{DB: d}
 	mux := http.NewServeMux()
 

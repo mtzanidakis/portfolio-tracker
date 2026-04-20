@@ -9,6 +9,11 @@
 /web/dist/
 /web/node_modules/
 
+# Frontend output copied into the Go embed dir by the Dockerfile web stage.
+# The .gitkeep is committed so go:embed compiles on an empty repo.
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
+
 # Local compose override symlink (user points at dev or prod)
 /compose.override.yaml
 
