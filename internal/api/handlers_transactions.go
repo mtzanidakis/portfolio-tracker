@@ -1,0 +1,216 @@
+package api
+
+import (
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/mtzanidakis/portfolio-tracker/internal/auth"
+	"github.com/mtzanidakis/portfolio-tracker/internal/db"
+	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
+)
+
+type txRequest struct {
+	AccountID   int64     `json:"account_id"`
+	AssetSymbol string    `json:"asset_symbol"`
+	Side        string    `json:"side"`
+	Qty         float64   `json:"qty"`
+	Price       float64   `json:"price"`
+	Fee         float64   `json:"fee"`
+	FxToBase    float64   `json:"fx_to_base"`
+	OccurredAt  time.Time `json:"occurred_at"`
+	Note        string    `json:"note"`
+}
+
+func listTransactionsHandler(d *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFrom(r.Context())
+		q := r.URL.Query()
+
+		f := db.TxFilter{UserID: u.ID}
+		if v := q.Get("account_id"); v != "" {
+			if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+				f.AccountID = id
+			}
+		}
+		if v := q.Get("symbol"); v != "" {
+			f.AssetSymbol = v
+		}
+		if v := q.Get("side"); v != "" {
+			f.Side = domain.TxSide(v)
+		}
+		if v := q.Get("from"); v != "" {
+			if t, err := time.Parse(time.RFC3339, v); err == nil {
+				f.From = t
+			}
+		}
+		if v := q.Get("to"); v != "" {
+			if t, err := time.Parse(time.RFC3339, v); err == nil {
+				f.To = t
+			}
+		}
+		if v := q.Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				f.Limit = n
+			}
+		}
+		txs, err := d.ListTransactions(r.Context(), f)
+		if err != nil {
+			writeDBError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, txs)
+	}
+}
+
+func createTransactionHandler(d *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFrom(r.Context())
+		var req txRequest
+		if err := decodeJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+			return
+		}
+		if err := validateTx(req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		// Ownership: account must belong to user.
+		acc, err := d.GetAccount(r.Context(), req.AccountID)
+		if err != nil || acc.UserID != u.ID {
+			writeError(w, http.StatusBadRequest, "account not found")
+			return
+		}
+		tx := &domain.Transaction{
+			UserID:      u.ID,
+			AccountID:   req.AccountID,
+			AssetSymbol: req.AssetSymbol,
+			Side:        domain.TxSide(req.Side),
+			Qty:         req.Qty,
+			Price:       req.Price,
+			Fee:         req.Fee,
+			FxToBase:    req.FxToBase,
+			OccurredAt:  req.OccurredAt,
+			Note:        req.Note,
+		}
+		if err := d.CreateTransaction(r.Context(), tx); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, tx)
+	}
+}
+
+func getTransactionHandler(d *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFrom(r.Context())
+		tx, err := loadOwnedTx(r, d, u.ID)
+		if err != nil {
+			writeDBError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, tx)
+	}
+}
+
+func updateTransactionHandler(d *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFrom(r.Context())
+		tx, err := loadOwnedTx(r, d, u.ID)
+		if err != nil {
+			writeDBError(w, err)
+			return
+		}
+		var req txRequest
+		if err := decodeJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+			return
+		}
+		if req.AccountID != 0 {
+			tx.AccountID = req.AccountID
+		}
+		if req.AssetSymbol != "" {
+			tx.AssetSymbol = req.AssetSymbol
+		}
+		if req.Side != "" {
+			tx.Side = domain.TxSide(req.Side)
+		}
+		if req.Qty > 0 {
+			tx.Qty = req.Qty
+		}
+		if req.Price >= 0 && req.Price != 0 {
+			tx.Price = req.Price
+		}
+		if req.Fee > 0 {
+			tx.Fee = req.Fee
+		}
+		if req.FxToBase > 0 {
+			tx.FxToBase = req.FxToBase
+		}
+		if !req.OccurredAt.IsZero() {
+			tx.OccurredAt = req.OccurredAt
+		}
+		tx.Note = req.Note
+		if err := d.UpdateTransaction(r.Context(), tx); err != nil {
+			writeDBError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, tx)
+	}
+}
+
+func deleteTransactionHandler(d *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFrom(r.Context())
+		tx, err := loadOwnedTx(r, d, u.ID)
+		if err != nil {
+			writeDBError(w, err)
+			return
+		}
+		if err := d.DeleteTransaction(r.Context(), tx.ID); err != nil {
+			writeDBError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func validateTx(req txRequest) error {
+	switch {
+	case req.AccountID == 0:
+		return errBadReq("account_id is required")
+	case req.AssetSymbol == "":
+		return errBadReq("asset_symbol is required")
+	case !domain.TxSide(req.Side).Valid():
+		return errBadReq("invalid side")
+	case req.Qty <= 0:
+		return errBadReq("qty must be positive")
+	case req.Price < 0:
+		return errBadReq("price must be non-negative")
+	case req.FxToBase <= 0:
+		return errBadReq("fx_to_base must be positive")
+	case req.OccurredAt.IsZero():
+		return errBadReq("occurred_at is required")
+	}
+	return nil
+}
+
+type badReqError string
+
+func (e badReqError) Error() string { return string(e) }
+func errBadReq(s string) error      { return badReqError(s) }
+
+func loadOwnedTx(r *http.Request, d *db.DB, userID int64) (*domain.Transaction, error) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		return nil, db.ErrNotFound
+	}
+	tx, err := d.GetTransaction(r.Context(), id)
+	if err != nil {
+		return nil, err
+	}
+	if tx.UserID != userID {
+		return nil, db.ErrNotFound
+	}
+	return tx, nil
+}
