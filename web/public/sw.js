@@ -1,26 +1,19 @@
-// Network-first for HTML/JS/CSS (so deploys propagate immediately),
-// cache-first for everything else (fonts, icons). API is always network.
-const CACHE = 'pt-static-v2';
-
-const PRECACHE = [
-  '/',
-  '/index.html',
-  '/app.js',
-  '/styles.css',
-  '/manifest.json',
-];
+// Every JS/CSS asset shipped by the build has a content-hashed filename,
+// so they are immutable and safe to cache-first forever. The few unhashed
+// entry points (index.html, manifest.json, the icon) go network-first so
+// deploys propagate immediately.
+const CACHE = 'pt-static-v3';
 
 const NETWORK_FIRST = new Set([
   '/',
   '/index.html',
-  '/app.js',
-  '/styles.css',
+  '/manifest.json',
 ]);
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE)
-      .then((c) => c.addAll(PRECACHE))
+      .then((c) => c.addAll([...NETWORK_FIRST]))
       .catch(() => {})
   );
   self.skipWaiting();

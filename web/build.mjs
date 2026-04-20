@@ -1,6 +1,7 @@
 import esbuild from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -11,22 +12,23 @@ const version = process.env.VERSION || 'dev';
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 
-// Copy public/ → dist/
-copyDir(path.join(root, 'public'), outDir);
+// Copy public/ → dist/, but hold index.html until we've picked hashed
+// filenames for the JS + CSS and can inject them.
+copyDir(path.join(root, 'public'), outDir, (name) => name !== 'index.html');
 
-// Copy CSS straight through.
-fs.copyFileSync(path.join(root, 'src/styles.css'), path.join(outDir, 'styles.css'));
-
-await esbuild.build({
+// Bundle JS with a content-hashed filename.
+const jsResult = await esbuild.build({
   entryPoints: [path.join(root, 'src/main.jsx')],
   bundle: true,
-  outfile: path.join(outDir, 'app.js'),
+  outdir: outDir,
+  entryNames: 'app-[hash]',
   format: 'esm',
   target: ['es2020'],
   jsx: 'automatic',
   jsxImportSource: 'preact',
   minify: !devMode,
   sourcemap: devMode,
+  metafile: true,
   define: {
     'process.env.NODE_ENV': JSON.stringify(devMode ? 'development' : 'production'),
     '__APP_VERSION__': JSON.stringify(version),
@@ -34,16 +36,35 @@ await esbuild.build({
   logLevel: 'info',
 });
 
-console.log(`built → ${outDir} (version=${version})`);
+const appOutputKey = Object.keys(jsResult.metafile.outputs)
+  .find((p) => p.endsWith('.js'));
+if (!appOutputKey) throw new Error('esbuild produced no .js output');
+const appName = path.basename(appOutputKey);
 
-function copyDir(src, dest) {
+// Hash styles.css by content and emit under the hashed name.
+const stylesContent = fs.readFileSync(path.join(root, 'src/styles.css'));
+const stylesHash = crypto.createHash('sha256').update(stylesContent).digest('hex').slice(0, 8);
+const stylesName = `styles-${stylesHash}.css`;
+fs.writeFileSync(path.join(outDir, stylesName), stylesContent);
+
+// Rewrite index.html with the hashed references.
+const htmlTemplate = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
+const html = htmlTemplate
+  .replace('/app.js', `/${appName}`)
+  .replace('/styles.css', `/${stylesName}`);
+fs.writeFileSync(path.join(outDir, 'index.html'), html);
+
+console.log(`built → ${outDir} (js=${appName}, css=${stylesName}, version=${version})`);
+
+function copyDir(src, dest, filter = () => true) {
   if (!fs.existsSync(src)) return;
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    if (!filter(entry.name)) continue;
     const s = path.join(src, entry.name);
     const d = path.join(dest, entry.name);
     if (entry.isDirectory()) {
       fs.mkdirSync(d, { recursive: true });
-      copyDir(s, d);
+      copyDir(s, d, filter);
     } else {
       fs.copyFileSync(s, d);
     }
