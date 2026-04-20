@@ -1,0 +1,36 @@
+# VCS
+.git
+.gitignore
+.gitattributes
+.github
+
+# Claude / agents
+.claude
+
+# Docs (not needed in build)
+*.md
+
+# Build artifacts
+bin/
+data/
+
+# Frontend artifacts (built inside container)
+web/dist/
+web/node_modules/
+
+# Compose / env (not needed in image)
+compose.yaml
+compose.override.yaml
+compose.override.yaml-*
+.env
+.env.example
+.env.local
+
+# Design handoff
+portfolio-tracker-handoff.zip
+
+# Editors / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db

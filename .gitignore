@@ -1,0 +1,33 @@
+# Binaries
+/bin/
+
+# Data
+/data/*
+!/data/.gitkeep
+
+# Frontend build artifacts
+/web/dist/
+/web/node_modules/
+
+# Local compose override symlink (user points at dev or prod)
+/compose.override.yaml
+
+# Local env
+/.env
+/.env.local
+
+# Design handoff artifact
+/portfolio-tracker-handoff.zip
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude agent local state
+/.claude/
