@@ -7,6 +7,8 @@ import { ActivitiesPage } from './components/ActivitiesPage.jsx';
 import { AccountsPage } from './components/AccountsPage.jsx';
 import { AddModal } from './components/AddModal.jsx';
 import { LoginForm } from './components/LoginForm.jsx';
+import { ProfileModal } from './components/ProfileModal.jsx';
+import { TokensModal } from './components/TokensModal.jsx';
 import { api } from './api.js';
 
 const TITLES = {
@@ -23,8 +25,10 @@ export function App() {
   const [privacy, setPrivacy] = useState(() => localStorage.getItem('pt-privacy') === '1');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [showAddTx, setShowAddTx] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [tokensOpen, setTokensOpen] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => { localStorage.setItem('pt-page', page); }, [page]);
@@ -76,7 +80,7 @@ export function App() {
       <button class="icon-btn" onClick={() => setTweaksOpen(o => !o)}>
         <Icon name="bell" />
       </button>
-      <button class="btn primary" onClick={() => setShowModal(true)}>
+      <button class="btn primary" onClick={() => setShowAddTx(true)}>
         <Icon name="plus" /> Add transaction
       </button>
     </>
@@ -87,20 +91,33 @@ export function App() {
 
   return (
     <div class="app" data-screen-label={page}>
-      <Sidebar page={page} setPage={setPage} user={user} />
+      <Sidebar
+        page={page} setPage={setPage} user={user}
+        onProfile={() => setProfileOpen(true)}
+        onTokens={() => setTokensOpen(true)}
+        onSignOut={signOut}
+      />
       <main class="main">
         <Topbar title={TITLES[page].t} sub={TITLES[page].s} actions={topActions} />
         <div class="content">
           {page === 'performance' && <PerformancePage {...pageProps} />}
           {page === 'allocations' && <AllocationsPage {...pageProps} />}
-          {page === 'activities'  && <ActivitiesPage  {...pageProps} openModal={() => setShowModal(true)} />}
+          {page === 'activities'  && <ActivitiesPage  {...pageProps} openModal={() => setShowAddTx(true)} />}
           {page === 'accounts'    && <AccountsPage    {...pageProps} />}
         </div>
       </main>
 
-      {showModal && (
-        <AddModal onClose={() => setShowModal(false)}
+      {showAddTx && (
+        <AddModal onClose={() => setShowAddTx(false)}
           onSaved={() => setRefreshTick(t => t + 1)} />
+      )}
+      {profileOpen && (
+        <ProfileModal user={user}
+          onSaved={(u) => setUser(u)}
+          onClose={() => setProfileOpen(false)} />
+      )}
+      {tokensOpen && (
+        <TokensModal onClose={() => setTokensOpen(false)} />
       )}
 
       <div class={`tweaks-panel ${tweaksOpen ? 'on' : ''}`}>
@@ -145,11 +162,6 @@ export function App() {
         <div class="tweak-row">
           <span>Privacy mode</span>
           <button class={`switch ${privacy ? 'on' : ''}`} onClick={() => setPrivacy(p => !p)} />
-        </div>
-
-        <div class="tweak-row" style={{ marginTop: 16 }}>
-          <span>Session</span>
-          <button class="btn" onClick={signOut}>Sign out</button>
         </div>
       </div>
     </div>
