@@ -36,8 +36,12 @@ export function ActivitiesPage({ privacy, currency, openModal }) {
       (assetMap[tx.asset_symbol]?.name || '').toLowerCase().includes(q))
   );
 
-  const totalBuys = rows.filter(a => a.side === 'buy').reduce((s, a) => s + a.qty * a.price, 0);
-  const totalSells = rows.filter(a => a.side === 'sell').reduce((s, a) => s + a.qty * a.price, 0);
+  // Convert every row to the user's base currency via the fx_to_base
+  // value locked at trade time. Without this the summary mixes
+  // currencies under a single label.
+  const inBase = (tx) => tx.qty * tx.price * (tx.fx_to_base || 1);
+  const totalBuys = rows.filter(a => a.side === 'buy').reduce((s, a) => s + inBase(a), 0);
+  const totalSells = rows.filter(a => a.side === 'sell').reduce((s, a) => s + inBase(a), 0);
 
   return (
     <>

@@ -78,7 +78,9 @@ func TestValueHoldings_CrossCurrency(t *testing.T) {
 	}
 }
 
-func TestValueHoldings_MissingPriceSkipped(t *testing.T) {
+func TestValueHoldings_MissingPriceStillIncluded(t *testing.T) {
+	// AAPL has a price, BTC doesn't. Both must appear; BTC's value
+	// falls back to its cost basis with PriceStale=true.
 	h := []Holding{
 		{Symbol: "AAPL", Qty: 1, CostNative: 100, CostBase: 100},
 		{Symbol: "BTC", Qty: 1, CostNative: 50000, CostBase: 50000},
@@ -89,12 +91,27 @@ func TestValueHoldings_MissingPriceSkipped(t *testing.T) {
 		staticCur(map[string]domain.Currency{"AAPL": domain.USD, "BTC": domain.USD}),
 		domain.USD,
 	)
-	if len(vals) != 1 || vals[0].Symbol != "AAPL" {
-		t.Errorf("expected only AAPL priced, got %+v", vals)
+	if len(vals) != 2 {
+		t.Fatalf("expected 2 holdings, got %+v", vals)
+	}
+	var btc HoldingValue
+	for _, v := range vals {
+		if v.Symbol == "BTC" {
+			btc = v
+		}
+	}
+	if !btc.PriceStale {
+		t.Error("BTC should be flagged stale")
+	}
+	if !approx(btc.ValueBase, 50000) {
+		t.Errorf("stale BTC ValueBase should fall back to CostBase, got %v", btc.ValueBase)
+	}
+	if btc.PnLBase != 0 {
+		t.Errorf("stale BTC PnL should be 0, got %v", btc.PnLBase)
 	}
 }
 
-func TestValueHoldings_MissingFxSkipped(t *testing.T) {
+func TestValueHoldings_MissingFxStillIncluded(t *testing.T) {
 	h := []Holding{{Symbol: "SAP", Qty: 1, CostNative: 150, CostBase: 165}}
 	vals := ValueHoldings(h,
 		staticPrice(map[string]float64{"SAP": 200}),
@@ -102,8 +119,11 @@ func TestValueHoldings_MissingFxSkipped(t *testing.T) {
 		staticCur(map[string]domain.Currency{"SAP": domain.EUR}),
 		domain.USD,
 	)
-	if len(vals) != 0 {
-		t.Errorf("expected skipped, got %+v", vals)
+	if len(vals) != 1 || !vals[0].PriceStale {
+		t.Errorf("expected stale SAP, got %+v", vals)
+	}
+	if !approx(vals[0].ValueBase, 165) {
+		t.Errorf("stale ValueBase should equal CostBase, got %v", vals[0].ValueBase)
 	}
 }
 

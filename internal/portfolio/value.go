@@ -19,25 +19,29 @@ type AssetCurrencyLookup func(symbol string) (cur domain.Currency, ok bool)
 
 // HoldingValue augments a Holding with current valuation and PnL in both
 // the asset's native currency and the user's base currency.
+//
+// PriceStale is true when either the current price or the FX rate was
+// unavailable. In that case ValueBase falls back to CostBase (so the
+// holding still contributes to totals and appears in allocations) and
+// the PnL fields are zero.
 type HoldingValue struct {
 	Holding
 	Currency     domain.Currency // native currency of the asset
-	CurrentPrice float64         // in native currency
+	CurrentPrice float64         // in native currency; 0 when missing
 	ValueNative  float64
 	ValueBase    float64
 	PnLNative    float64
 	PnLBase      float64
-	PnLPctNative float64 // percentage, e.g. 12.5 == 12.5%
+	PnLPctNative float64
 	PnLPctBase   float64
+	PriceStale   bool
 }
 
-// ValueHoldings prices each holding in the user's base currency using the
-// supplied lookup functions. Holdings for which price, currency, or FX is
-// missing are silently omitted — the caller decides how to surface that.
-//
-// The FX conversion uses currency→USD→base (two lookups): this keeps the
-// underlying rates table single-rooted (USD) while letting base_currency be
-// any supported currency.
+// ValueHoldings prices each holding in the user's base currency. When a
+// price or FX rate is missing, the holding is still returned with
+// ValueBase == CostBase (zero PnL) and PriceStale=true so the UI can
+// surface the condition. Holdings whose asset currency is entirely
+// unknown use the user's base currency as a neutral fallback.
 func ValueHoldings(
 	holdings []Holding,
 	prices PriceLookup,
@@ -47,36 +51,44 @@ func ValueHoldings(
 ) []HoldingValue {
 	out := make([]HoldingValue, 0, len(holdings))
 	for _, h := range holdings {
-		price, ok := prices(h.Symbol)
-		if !ok {
-			continue
-		}
-		cur, ok := currencies(h.Symbol)
-		if !ok {
-			continue
+		cur, hasCur := currencies(h.Symbol)
+		if !hasCur {
+			cur = base
 		}
 
+		price, hasPrice := prices(h.Symbol)
+
 		fxNativeToBase := 1.0
+		hasFx := true
 		if cur != base {
 			nativeUSD, ok1 := fx(cur)
 			baseUSD, ok2 := fx(base)
 			if !ok1 || !ok2 || baseUSD == 0 {
-				continue
+				hasFx = false
+			} else {
+				fxNativeToBase = nativeUSD / baseUSD
 			}
-			fxNativeToBase = nativeUSD / baseUSD
 		}
 
-		valueNative := h.Qty * price
-		valueBase := valueNative * fxNativeToBase
-		pnlNative := valueNative - h.CostNative
-		pnlBase := valueBase - h.CostBase
+		stale := !hasPrice || !hasFx
+		var valueNative, valueBase, pnlNative, pnlBase, pctNative, pctBase float64
 
-		var pctNative, pctBase float64
-		if h.CostNative > 0 {
-			pctNative = pnlNative / h.CostNative * 100
-		}
-		if h.CostBase > 0 {
-			pctBase = pnlBase / h.CostBase * 100
+		switch {
+		case !stale:
+			valueNative = h.Qty * price
+			valueBase = valueNative * fxNativeToBase
+			pnlNative = valueNative - h.CostNative
+			pnlBase = valueBase - h.CostBase
+			if h.CostNative > 0 {
+				pctNative = pnlNative / h.CostNative * 100
+			}
+			if h.CostBase > 0 {
+				pctBase = pnlBase / h.CostBase * 100
+			}
+		default:
+			// Missing price or FX: fall back to cost basis. PnL = 0.
+			valueNative = h.CostNative
+			valueBase = h.CostBase
 		}
 
 		out = append(out, HoldingValue{
@@ -89,6 +101,7 @@ func ValueHoldings(
 			PnLBase:      pnlBase,
 			PnLPctNative: pctNative,
 			PnLPctBase:   pctBase,
+			PriceStale:   stale,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Symbol < out[j].Symbol })
