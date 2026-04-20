@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
+import { AccountModal } from './AccountModal.jsx';
 import { api } from '../api.js';
 
 export function AccountsPage() {
   const [accounts, setAccounts] = useState([]);
   const [err, setErr] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     api.accounts().then(a => setAccounts(a || [])).catch(e => setErr(e.message));
-  }, []);
+  };
+  useEffect(load, []);
 
   if (err) return <div class="empty">Error: {err}</div>;
 
@@ -49,11 +52,16 @@ export function AccountsPage() {
           </div>
         ))}
 
-        <button class="acc-card" style={{
-          borderStyle: 'dashed', display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 10,
-          color: 'var(--text-muted)', minHeight: 220,
-        }}>
+        <button
+          type="button"
+          onClick={() => setShowAdd(true)}
+          class="acc-card"
+          style={{
+            borderStyle: 'dashed', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 10,
+            color: 'var(--text-muted)', minHeight: 220, cursor: 'pointer',
+            background: 'transparent',
+          }}>
           <div style={{
             width: 40, height: 40, borderRadius: 10,
             background: 'var(--bg-sunken)', display: 'grid', placeItems: 'center',
@@ -67,6 +75,13 @@ export function AccountsPage() {
           </div>
         </button>
       </div>
+
+      {showAdd && (
+        <AccountModal
+          onClose={() => setShowAdd(false)}
+          onSaved={load}
+        />
+      )}
     </>
   );
 }
