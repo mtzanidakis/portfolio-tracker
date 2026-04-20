@@ -1,0 +1,41 @@
+// Package prices provides price and FX-rate providers plus a refresh
+// service that writes the latest quotes into the database.
+//
+// Providers are thin HTTP adapters around Yahoo Finance (stocks/ETFs),
+// CoinGecko (crypto), and Frankfurter (FX). Providers return data; the
+// Service orchestrates and persists.
+package prices
+
+import (
+	"context"
+	"time"
+
+	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
+)
+
+// PriceQuote is a single instrument quote as returned by a PriceProvider.
+// The Symbol field echoes the *external* identifier the caller supplied
+// (e.g., CoinGecko coin ID, or Yahoo ticker) — the Service maps it back
+// to the tracker's asset symbol.
+type PriceQuote struct {
+	Symbol    string
+	Price     float64
+	Currency  domain.Currency
+	FetchedAt time.Time
+}
+
+// PriceProvider fetches the current price of one or more instruments.
+type PriceProvider interface {
+	// Name identifies the provider (matches assets.provider in DB).
+	Name() string
+	// Fetch returns quotes for the given external IDs.
+	Fetch(ctx context.Context, externalIDs []string) ([]PriceQuote, error)
+}
+
+// FxProvider fetches FX rates expressed as "1 currency = rate USD".
+type FxProvider interface {
+	Name() string
+	// Fetch returns a map keyed by currency with rate in USD.
+	// USD itself may be included with rate 1.0.
+	Fetch(ctx context.Context, currencies []domain.Currency) (map[domain.Currency]float64, error)
+}
