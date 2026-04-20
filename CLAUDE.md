@@ -5,7 +5,7 @@ Self-hosted stocks / ETF / crypto portfolio tracker. Multi-user, token auth, PWA
 ## Stack
 
 - **Backend**: Go 1.26.2, stdlib-first, pure-Go SQLite (`modernc.org/sqlite`), `CGO_ENABLED=0` everywhere.
-- **Frontend**: Preact + esbuild, JSX pre-transpiled at build time, embedded via `go:embed`. Self-hosted fonts, no CDN.
+- **Frontend**: Preact + esbuild, JSX pre-transpiled at build time, bundled into `internal/web/dist/` by the Dockerfile web stage and embedded via `go:embed`. No CDN at runtime; system font stack for now (self-hosting woff2 is a future polish).
 - **Deploy**: Single Alpine container (`ptd` server + `ptadmin` CLI inside). `ptagent` CLI released separately via goreleaser.
 
 ## Build & run — container-only
@@ -32,17 +32,20 @@ Compose env selection: symlink `compose.override.yaml` → `compose.override.yam
 ## Layout
 
 ```
-cmd/{ptd,ptadmin,ptagent}/     # binaries
+cmd/{ptd,ptadmin,ptagent}/     # binaries (ptd + ptadmin in container, ptagent standalone)
 internal/
-  api/        # HTTP handlers
-  auth/       # token auth
-  db/         # sqlite + migrations
-  domain/     # types
-  portfolio/  # pure logic: holdings, PnL, series
-  prices/     # provider interface + implementations
-  version/    # build version
-  web/        # go:embed static handler
-migrations/   # SQL
-skill/SKILL.md
-web/          # Preact source, esbuild-bundled into web/dist
+  api/        # HTTP handlers + Go 1.22 ServeMux
+  auth/       # Bearer token middleware
+  db/
+    migrations/   # SQL, embedded
+    *.go          # repositories per entity
+  domain/     # types + enums
+  portfolio/  # pure logic: holdings, PnL, valuation
+  prices/     # providers + refresh service
+  version/    # build-time Version string
+  web/
+    dist/       # built frontend (gitignored except .gitkeep placeholder)
+    web.go      # go:embed static handler
+skill/SKILL.md  # Claude Code skill for ptagent
+web/            # Preact source, esbuild-bundled into internal/web/dist
 ```
