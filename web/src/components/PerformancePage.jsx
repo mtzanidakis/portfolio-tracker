@@ -40,12 +40,16 @@ export function PerformancePage({ privacy, currency }) {
     .sort((a, b) => (b.PnLPctBase || 0) - (a.PnLPctBase || 0));
   const anyStale = movers.some(h => h.PriceStale);
 
-  const series = (perf.series || []).map(p => ({ d: p.at, v: p.value }));
-  // Period-level delta reflects the selected timeframe — matches the
-  // mockup's "+$X · +Y% this period" label and stays in sync with the
-  // selected pill.
-  const periodPnL = series.length >= 2 ? series[series.length - 1].v - series[0].v : 0;
-  const periodPct = series.length >= 2 && series[0].v !== 0 ? (periodPnL / series[0].v) * 100 : 0;
+  const series = (perf.series || []).map(p => ({ d: p.at, v: p.value, c: p.cost }));
+  // Period-level PnL is the *change in profit* (value − cost) across the
+  // window, not the raw value delta — otherwise deposits during the
+  // period inflate the number. Percentage is taken against the current
+  // cost basis so it reads as "return on capital invested".
+  const last = series[series.length - 1];
+  const first = series[0];
+  const periodPnL = series.length >= 2 ? (last.v - last.c) - (first.v - first.c) : 0;
+  const pctBase = last ? last.c : 0;
+  const periodPct = pctBase > 0 ? (periodPnL / pctBase) * 100 : 0;
 
   return (
     <>

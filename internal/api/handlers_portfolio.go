@@ -123,6 +123,7 @@ func allocationsHandler(d *db.DB) http.HandlerFunc {
 type performancePoint struct {
 	At    string  `json:"at"`
 	Value float64 `json:"value"`
+	Cost  float64 `json:"cost"`
 }
 
 type performanceResponse struct {
@@ -314,6 +315,7 @@ func buildSeries(
 		out = append(out, performancePoint{
 			At:    p.At.Format(time.RFC3339),
 			Value: p.Value,
+			Cost:  p.Cost,
 		})
 	}
 	return out
