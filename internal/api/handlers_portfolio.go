@@ -72,6 +72,16 @@ func allocationsHandler(d *db.DB) http.HandlerFunc {
 		// For "by-asset" the group key is the symbol; for "type" it's the
 		// asset's type (from DB). "account" groupings require replaying
 		// transactions per account — deferred (returns empty for now).
+		// Per-symbol metadata (name, type) is needed by the "asset" view
+		// for the sub-label and by the "type" view for bucketing.
+		assets, _ := d.ListAssets(r.Context())
+		nameOf := make(map[string]string, len(assets))
+		typeOf := make(map[string]string, len(assets))
+		for _, a := range assets {
+			nameOf[a.Symbol] = a.Name
+			typeOf[a.Symbol] = string(a.Type)
+		}
+
 		buckets := make(map[string]*allocationEntry)
 		switch group {
 		case "asset":
@@ -79,15 +89,11 @@ func allocationsHandler(d *db.DB) http.HandlerFunc {
 				buckets[v.Symbol] = &allocationEntry{
 					Key:   v.Symbol,
 					Label: v.Symbol,
+					Sub:   nameOf[v.Symbol],
 					Value: v.ValueBase,
 				}
 			}
 		case "type":
-			assets, _ := d.ListAssets(r.Context())
-			typeOf := make(map[string]string, len(assets))
-			for _, a := range assets {
-				typeOf[a.Symbol] = string(a.Type)
-			}
 			for _, v := range values {
 				t := typeOf[v.Symbol]
 				if t == "" {

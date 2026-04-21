@@ -113,9 +113,17 @@ export function AllocationsPage({ privacy, currency }) {
                   <div class="sym">{a.label}</div>
                   {a.sub && <div class="sub">{a.sub}</div>}
                 </div>
-                <div class="alloc-bar" title={`${(a.frac * 100).toFixed(1)}% · ${fmtMoney(a.value, currency)}`}>
+                <div class="alloc-bar">
                   <div class="fill"
                     style={{ width: `${(a.frac / maxFrac) * 100}%`, background: a.color }} />
+                </div>
+                <div class="alloc-meta">
+                  <div class="pct">{(a.frac * 100).toFixed(1)}%</div>
+                  <div class="amt">
+                    {privacy
+                      ? <span class="masked">{fmtMoney(a.value, currency, { decimals: 0 })}</span>
+                      : fmtMoney(a.value, currency, { decimals: 0 })}
+                  </div>
                 </div>
               </li>
             ))}
