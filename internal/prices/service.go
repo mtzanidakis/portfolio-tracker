@@ -180,6 +180,15 @@ func (s *Service) refreshPrices(ctx context.Context) error {
 			}); err != nil {
 				s.Logger.Warn("persist price failed", "symbol", r.symbol, "err", err)
 			}
+			// Mirror the live quote into the daily snapshot table so the
+			// performance chart's last point reflects today's price rather
+			// than yesterday's close (Yahoo's chart endpoint lags by ≥1d).
+			today := truncateDay(q.FetchedAt)
+			if err := s.DB.InsertPriceSnapshot(ctx, db.PriceSnapshot{
+				Symbol: r.symbol, At: today, Price: q.Price,
+			}); err != nil {
+				s.Logger.Warn("persist snapshot failed", "symbol", r.symbol, "err", err)
+			}
 		}
 	}
 	return nil
@@ -191,14 +200,33 @@ func (s *Service) refreshFx(ctx context.Context) error {
 		return err
 	}
 	now := time.Now().UTC()
+	today := truncateDay(now)
 	for c, r := range rates {
 		if err := s.DB.SetLatestFxRate(ctx, db.LatestFxRate{
 			Currency: c, USDRate: r, FetchedAt: now,
 		}); err != nil {
 			s.Logger.Warn("persist fx failed", "currency", c, "err", err)
 		}
+		// Same motivation as refreshPrices: keep the per-day FX table in
+		// sync with latest so valuations on `today` use the same rate in
+		// both the hero (latest) and the chart (snapshots).
+		if c == domain.USD {
+			continue
+		}
+		if err := s.DB.InsertFxRate(ctx, db.FxRate{
+			Currency: c, At: today, USDRate: r,
+		}); err != nil {
+			s.Logger.Warn("persist fx snapshot failed", "currency", c, "err", err)
+		}
 	}
 	return nil
+}
+
+// truncateDay returns midnight UTC for the given instant. Mirrors
+// portfolio.truncateDay but kept private so prices has no dep on
+// portfolio.
+func truncateDay(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 func (s *Service) providerByName(name string) PriceProvider {
