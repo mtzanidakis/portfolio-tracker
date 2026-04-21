@@ -41,17 +41,21 @@ func New(d *db.DB, logger *slog.Logger, coinGeckoAPIKey string) *Service {
 // provider (idempotent via upserts) so the performance chart has
 // something to plot. Per-provider failures are logged but do not abort.
 func (s *Service) RefreshAll(ctx context.Context) error {
-	if err := s.refreshPrices(ctx); err != nil {
-		s.Logger.Warn("price refresh failed", "err", err)
-	}
+	// History first, then latest. The two sources agree on old data but
+	// can disagree on today's value (Yahoo chart's intraday close /
+	// Frankfurter timeseries vs. the live quote). We want the live quote
+	// to win so the performance chart's final point matches the hero.
 	if err := s.refreshPriceHistory(ctx); err != nil {
 		s.Logger.Warn("price history refresh failed", "err", err)
 	}
-	if err := s.refreshFx(ctx); err != nil {
-		s.Logger.Warn("fx refresh failed", "err", err)
+	if err := s.refreshPrices(ctx); err != nil {
+		s.Logger.Warn("price refresh failed", "err", err)
 	}
 	if err := s.refreshFxHistory(ctx); err != nil {
 		s.Logger.Warn("fx history refresh failed", "err", err)
+	}
+	if err := s.refreshFx(ctx); err != nil {
+		s.Logger.Warn("fx refresh failed", "err", err)
 	}
 	return nil
 }

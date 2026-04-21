@@ -77,8 +77,16 @@ func SeriesFromTransactions(
 
 		// Apply every tx that happened on or before this day, updating
 		// both qty and cost basis so the end-of-day snapshot is correct.
+		// Track which symbols transacted today so we can anchor their
+		// value to cost — the user paid tx.Price (not Yahoo's EOD
+		// close), so valuing them at the snapshot here would report a
+		// phantom PnL on day zero.
+		txToday := map[string]bool{}
 		for txIdx < len(sorted) && !truncateDay(sorted[txIdx].OccurredAt).After(day) {
 			tx := sorted[txIdx]
+			if truncateDay(tx.OccurredAt).Equal(day) {
+				txToday[tx.AssetSymbol] = true
+			}
 			h := state[tx.AssetSymbol]
 			if h == nil {
 				h = &holdingState{}
@@ -111,6 +119,14 @@ func SeriesFromTransactions(
 				continue
 			}
 			totalCost += h.costBase
+
+			if txToday[sym] {
+				// Anchor value == cost on tx days so deposits register
+				// at book value rather than at the day's closing price.
+				totalValue += h.costBase
+				continue
+			}
+
 			price, ok := priceAt(sym, day)
 			if !ok {
 				continue
