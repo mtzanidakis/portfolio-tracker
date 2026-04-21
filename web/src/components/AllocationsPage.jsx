@@ -51,7 +51,6 @@ export function AllocationsPage({ privacy, currency }) {
   });
 
   const focused = hover ? arcs.find(a => a.key === hover) : null;
-  const maxFrac = arcs.reduce((m, a) => a.frac > m ? a.frac : m, 0) || 1;
 
   return (
     <div class="card">
@@ -115,7 +114,7 @@ export function AllocationsPage({ privacy, currency }) {
                 </div>
                 <div class="alloc-bar">
                   <div class="fill"
-                    style={{ width: `${(a.frac / maxFrac) * 100}%`, background: a.color }} />
+                    style={{ width: `${a.frac * 100}%`, background: a.color }} />
                 </div>
                 <div class="alloc-meta">
                   <div class="pct">{(a.frac * 100).toFixed(1)}%</div>
