@@ -35,6 +35,24 @@ func holdingsHandler(d *db.DB) http.HandlerFunc {
 	}
 }
 
+// assetTypeDisplay turns an AssetType enum value (lowercase in the DB)
+// into the label the allocations legend shows. Kept here rather than on
+// domain.AssetType so the pluralisation stays a UI concern.
+func assetTypeDisplay(t string) string {
+	switch t {
+	case "stock":
+		return "Stocks"
+	case "etf":
+		return "ETFs"
+	case "crypto":
+		return "Crypto"
+	case "cash":
+		return "Cash"
+	default:
+		return t
+	}
+}
+
 type allocationEntry struct {
 	Key      string  `json:"key"`
 	Label    string  `json:"label"`
@@ -101,7 +119,7 @@ func allocationsHandler(d *db.DB) http.HandlerFunc {
 				}
 				b, ok := buckets[t]
 				if !ok {
-					b = &allocationEntry{Key: t, Label: t}
+					b = &allocationEntry{Key: t, Label: assetTypeDisplay(t)}
 					buckets[t] = b
 				}
 				b.Value += v.ValueBase

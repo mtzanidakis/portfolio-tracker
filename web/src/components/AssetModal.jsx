@@ -29,12 +29,19 @@ export function AssetModal({ asset, onClose, onSaved }) {
   const [submitting, setSubmitting] = useState(false);
   const [looking, setLooking] = useState(false);
 
-  // Debounced provider lookup: whenever symbol or provider changes on a
-  // new asset, re-query and auto-fill name / currency / type / provider-id.
-  // Editing an existing asset skips the lookup — values are already canonical.
+  // Debounced provider lookup: whenever symbol or provider changes the
+  // form re-queries and auto-fills name / currency / type / provider-id.
+  // On mount for an existing asset we suppress the initial fire so the
+  // user's stored values aren't clobbered; subsequent provider changes
+  // do fire, which is how editing a broken asset (e.g. coingecko BTC
+  // with provider_id=BTC) self-heals to provider_id=bitcoin.
   const lookupSeq = useRef(0);
+  const firstRun = useRef(true);
   useEffect(() => {
-    if (editing) return;
+    const isFirst = firstRun.current;
+    firstRun.current = false;
+    if (isFirst && editing) return;
+
     const sym = symbol.trim();
     if (!sym || !provider) {
       setLooking(false);
