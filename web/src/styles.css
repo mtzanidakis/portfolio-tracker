@@ -683,48 +683,79 @@ input, select, textarea {
 /* ====== Allocations ====== */
 .alloc-grid {
   display: grid;
-  grid-template-columns: 360px 1fr;
-  gap: 24px;
+  grid-template-columns: minmax(260px, 380px) 1fr;
+  gap: 32px;
   align-items: start;
 }
 .donut-wrap {
   display: grid;
   place-items: center;
-  padding: 20px 0;
+  padding: 8px 0;
   position: relative;
 }
 .donut-center {
   position: absolute;
   text-align: center;
+  pointer-events: none;
 }
-.donut-center .l { font-size: 12px; color: var(--text-muted); }
-.donut-center .v { font-family: var(--font-mono); font-size: 26px; font-weight: 500; letter-spacing: -0.01em; }
+.donut-center .l { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.donut-center .v {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.donut-center .p {
+  font-size: 12px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  margin-top: 4px;
+}
 .alloc-list {
   list-style: none;
   padding: 0; margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .alloc-row {
   display: grid;
-  grid-template-columns: 14px 1fr auto auto;
-  gap: 12px;
+  grid-template-columns: 12px minmax(0, 1fr) 80px;
+  gap: 14px;
   align-items: center;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: var(--radius-sm);
   transition: background 120ms;
   cursor: pointer;
 }
 .alloc-row:hover { background: var(--bg-hover); }
-.alloc-dot { width: 10px; height: 10px; border-radius: 50%; }
-.alloc-name { font-size: 13.5px; }
-.alloc-name .sub { font-size: 11px; color: var(--text-faint); }
+.alloc-dot { width: 9px; height: 9px; border-radius: 50%; }
+.alloc-name { min-width: 0; line-height: 1.25; }
+.alloc-name .sym {
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+.alloc-name .sub {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .alloc-bar {
-  width: 120px; height: 4px;
+  height: 4px;
   background: var(--bg-sunken);
   border-radius: 2px;
   overflow: hidden;
 }
-.alloc-bar .fill { height: 100%; border-radius: 2px; }
-.alloc-pct { font-family: var(--font-mono); font-size: 13px; min-width: 56px; text-align: right; }
+.alloc-bar .fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 180ms ease-out;
+}
 
 /* ====== Accounts ====== */
 .acc-grid {

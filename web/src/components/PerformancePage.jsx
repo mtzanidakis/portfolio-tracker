@@ -41,6 +41,11 @@ export function PerformancePage({ privacy, currency }) {
   const anyStale = movers.some(h => h.PriceStale);
 
   const series = (perf.series || []).map(p => ({ d: p.at, v: p.value }));
+  // Period-level delta reflects the selected timeframe — matches the
+  // mockup's "+$X · +Y% this period" label and stays in sync with the
+  // selected pill.
+  const periodPnL = series.length >= 2 ? series[series.length - 1].v - series[0].v : 0;
+  const periodPct = series.length >= 2 && series[0].v !== 0 ? (periodPnL / series[0].v) * 100 : 0;
 
   return (
     <>
@@ -84,8 +89,8 @@ export function PerformancePage({ privacy, currency }) {
         <div class="card-header">
           <div>
             <div class="card-title">Portfolio performance</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: perf.pnl >= 0 ? 'var(--pos)' : 'var(--neg)', marginTop: 4 }}>
-              {fmtMoney(perf.pnl, currency, { sign: true })} · {fmtPct(perf.pnl_pct)} <span style={{ color: 'var(--text-faint)' }}>total</span>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: periodPnL >= 0 ? 'var(--pos)' : 'var(--neg)', marginTop: 4 }}>
+              {fmtMoney(periodPnL, currency, { sign: true })} · {fmtPct(periodPct)} <span style={{ color: 'var(--text-faint)' }}>this period</span>
             </div>
           </div>
           <div class="timeframe">
