@@ -141,8 +141,11 @@ type yahooQuoteResponse struct {
 	QuoteResponse struct {
 		Result []struct {
 			Symbol             string  `json:"symbol"`
+			ShortName          string  `json:"shortName"`
+			LongName           string  `json:"longName"`
 			RegularMarketPrice float64 `json:"regularMarketPrice"`
 			Currency           string  `json:"currency"`
+			QuoteType          string  `json:"quoteType"`
 		} `json:"result"`
 		Error any `json:"error"`
 	} `json:"quoteResponse"`
@@ -178,6 +181,56 @@ func (y *YahooProvider) Fetch(ctx context.Context, symbols []string) ([]PriceQuo
 		})
 	}
 	return out, nil
+}
+
+// LookupSymbol resolves a single ticker to its name/currency/type via
+// the same /v7/finance/quote endpoint used by Fetch. Returns nil when
+// Yahoo has no match (not an error — the caller may try another
+// provider). Name prefers longName and falls back to shortName.
+func (y *YahooProvider) LookupSymbol(ctx context.Context, symbol string) (*SymbolInfo, error) {
+	symbol = strings.TrimSpace(symbol)
+	if symbol == "" {
+		return nil, nil
+	}
+	params := url.Values{"symbols": {symbol}}
+	body, err := y.authedGet(ctx, "/v7/finance/quote", params)
+	if err != nil {
+		return nil, err
+	}
+	var parsed yahooQuoteResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("yahoo decode: %w", err)
+	}
+	if len(parsed.QuoteResponse.Result) == 0 {
+		return nil, nil
+	}
+	r := parsed.QuoteResponse.Result[0]
+	name := r.LongName
+	if name == "" {
+		name = r.ShortName
+	}
+	return &SymbolInfo{
+		Symbol:     r.Symbol,
+		Name:       name,
+		Currency:   domain.Currency(strings.ToUpper(r.Currency)),
+		AssetType:  yahooQuoteTypeToAsset(r.QuoteType),
+		ProviderID: r.Symbol,
+	}, nil
+}
+
+// yahooQuoteTypeToAsset maps Yahoo's quoteType enum to our AssetType.
+// Unknown values fall back to stock so the form stays usable.
+func yahooQuoteTypeToAsset(qt string) domain.AssetType {
+	switch strings.ToUpper(qt) {
+	case "ETF":
+		return domain.AssetETF
+	case "CRYPTOCURRENCY":
+		return domain.AssetCrypto
+	case "EQUITY", "MUTUALFUND":
+		return domain.AssetStock
+	default:
+		return domain.AssetStock
+	}
 }
 
 // authedGet performs a crumb-protected GET, refreshing the crumb once

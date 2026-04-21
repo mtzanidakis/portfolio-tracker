@@ -80,8 +80,20 @@ func run() int {
 	// Background session-expiry sweep.
 	go runSessionPurge(ctx, conn, logger)
 
-	// HTTP mux: API + embedded frontend.
-	mux := api.NewRouter(conn, lifetime, api.WithPriceRefresher(svc))
+	// HTTP mux: API + embedded frontend. Provider lookups are optional
+	// capabilities — only forward them if the concrete provider implements
+	// SymbolLookup.
+	var yahooLookup, cgLookup prices.SymbolLookup
+	if l, ok := svc.Yahoo.(prices.SymbolLookup); ok {
+		yahooLookup = l
+	}
+	if l, ok := svc.CoinGecko.(prices.SymbolLookup); ok {
+		cgLookup = l
+	}
+	mux := api.NewRouter(conn, lifetime,
+		api.WithPriceRefresher(svc),
+		api.WithAssetLookups(yahooLookup, cgLookup),
+	)
 	mux.Handle("/", web.DefaultHandler())
 
 	srv := &http.Server{

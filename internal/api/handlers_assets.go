@@ -6,6 +6,7 @@ import (
 
 	"github.com/mtzanidakis/portfolio-tracker/internal/db"
 	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
+	"github.com/mtzanidakis/portfolio-tracker/internal/prices"
 )
 
 func listAssetsHandler(d *db.DB) http.HandlerFunc {
@@ -84,6 +85,65 @@ func upsertAssetHandler(d *db.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, a)
+	}
+}
+
+type assetLookupResponse struct {
+	Symbol     string `json:"symbol"`
+	Name       string `json:"name"`
+	Currency   string `json:"currency,omitempty"`
+	Type       string `json:"type,omitempty"`
+	Provider   string `json:"provider"`
+	ProviderID string `json:"provider_id,omitempty"`
+}
+
+// lookupAssetHandler resolves a user-typed symbol via the given
+// provider, used by the "add asset" form to auto-fill the name / native
+// currency / type. Returns 404 when the provider finds no match so the
+// UI can keep the manually-typed values.
+func lookupAssetHandler(yahoo, coingecko prices.SymbolLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		symbol := strings.TrimSpace(q.Get("symbol"))
+		if symbol == "" {
+			writeError(w, http.StatusBadRequest, "symbol is required")
+			return
+		}
+		provider := strings.ToLower(strings.TrimSpace(q.Get("provider")))
+		if provider == "" {
+			provider = "yahoo"
+		}
+		var lookup prices.SymbolLookup
+		switch provider {
+		case "yahoo":
+			lookup = yahoo
+		case "coingecko":
+			lookup = coingecko
+		default:
+			writeError(w, http.StatusBadRequest, "unknown provider")
+			return
+		}
+		if lookup == nil {
+			writeError(w, http.StatusServiceUnavailable, "provider not configured")
+			return
+		}
+		info, err := lookup.LookupSymbol(r.Context(), symbol)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		if info == nil {
+			writeError(w, http.StatusNotFound, "symbol not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, assetLookupResponse{
+			Symbol:     info.Symbol,
+			Name:       info.Name,
+			Currency:   string(info.Currency),
+			Type:       string(info.AssetType),
+			Provider:   provider,
+			ProviderID: info.ProviderID,
+		})
 	}
 }
 

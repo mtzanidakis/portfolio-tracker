@@ -73,3 +73,20 @@ type HistoricalFxRate struct {
 type FxRangeProvider interface {
 	FetchRange(ctx context.Context, currencies []domain.Currency, from, to time.Time) ([]HistoricalFxRate, error)
 }
+
+// SymbolInfo is provider-resolved metadata about a ticker / coin id.
+// Fields are best-effort: providers may leave some blank (e.g., Yahoo
+// doesn't classify cash; CoinGecko always returns USD + crypto).
+type SymbolInfo struct {
+	Symbol     string
+	Name       string
+	Currency   domain.Currency
+	AssetType  domain.AssetType
+	ProviderID string
+}
+
+// SymbolLookup resolves a user-typed symbol to provider metadata so the
+// "add asset" form can auto-fill name / currency / type.
+type SymbolLookup interface {
+	LookupSymbol(ctx context.Context, symbol string) (*SymbolInfo, error)
+}

@@ -19,8 +19,10 @@ const DefaultSessionLifetime = 30 * 24 * time.Hour
 type Option func(*routerCfg)
 
 type routerCfg struct {
-	fxHistory prices.FxHistoryProvider
-	refresher PriceRefresher
+	fxHistory     prices.FxHistoryProvider
+	refresher     PriceRefresher
+	lookupYahoo   prices.SymbolLookup
+	lookupCoinGko prices.SymbolLookup
 }
 
 // WithFxHistory overrides the default Frankfurter backing for
@@ -34,6 +36,16 @@ func WithFxHistory(p prices.FxHistoryProvider) Option {
 // not registered.
 func WithPriceRefresher(r PriceRefresher) Option {
 	return func(c *routerCfg) { c.refresher = r }
+}
+
+// WithAssetLookups wires the providers backing GET /api/v1/assets/lookup
+// (auto-fill in the "add asset" form). Either argument may be nil — the
+// handler responds 503 when the requested provider is missing.
+func WithAssetLookups(yahoo, coingecko prices.SymbolLookup) Option {
+	return func(c *routerCfg) {
+		c.lookupYahoo = yahoo
+		c.lookupCoinGko = coingecko
+	}
 }
 
 // NewRouter returns the v1 API mux. /api/v1/version and /api/v1/login
@@ -78,6 +90,7 @@ func NewRouter(d *db.DB, sessionLifetime time.Duration, opts ...Option) *http.Se
 
 	mux.Handle("GET /api/v1/assets", protect(listAssetsHandler(d)))
 	mux.Handle("POST /api/v1/assets", protect(upsertAssetHandler(d)))
+	mux.Handle("GET /api/v1/assets/lookup", protect(lookupAssetHandler(cfg.lookupYahoo, cfg.lookupCoinGko)))
 	mux.Handle("GET /api/v1/assets/{symbol}", protect(getAssetHandler(d)))
 	mux.Handle("DELETE /api/v1/assets/{symbol}", protect(deleteAssetHandler(d)))
 

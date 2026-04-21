@@ -1,9 +1,14 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
 import { api } from '../api.js';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD'];
-const TYPES = ['stock', 'etf', 'crypto', 'cash'];
+const TYPES = [
+  { value: 'stock',  label: 'Stock' },
+  { value: 'etf',    label: 'ETF' },
+  { value: 'crypto', label: 'Crypto' },
+  { value: 'cash',   label: 'Cash' },
+];
 const PROVIDERS = [
   { id: '',          label: '(none)' },
   { id: 'yahoo',     label: 'Yahoo Finance' },
@@ -18,20 +23,41 @@ export function AssetModal({ asset, onClose, onSaved }) {
   const [type, setType] = useState(asset?.type || 'stock');
   const [currency, setCurrency] = useState(asset?.currency || 'USD');
   const [color, setColor] = useState(asset?.color || COLOURS[0]);
-  const [provider, setProvider] = useState(asset?.provider || '');
+  const [provider, setProvider] = useState(asset?.provider || 'yahoo');
   const [providerID, setProviderID] = useState(asset?.provider_id || '');
   const [err, setErr] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [looking, setLooking] = useState(false);
 
-  // Sensible default for the provider once a type is picked.
-  const onType = (t) => {
-    setType(t);
-    if (!editing) {
-      if (t === 'crypto') setProvider('coingecko');
-      else if (t === 'stock' || t === 'etf') setProvider('yahoo');
-      else setProvider('');
+  // Debounced provider lookup: whenever symbol or provider changes on a
+  // new asset, re-query and auto-fill name / currency / type / provider-id.
+  // Editing an existing asset skips the lookup — values are already canonical.
+  const lookupSeq = useRef(0);
+  useEffect(() => {
+    if (editing) return;
+    const sym = symbol.trim();
+    if (!sym || !provider) {
+      setLooking(false);
+      return;
     }
-  };
+    const seq = ++lookupSeq.current;
+    setLooking(true);
+    const t = setTimeout(async () => {
+      try {
+        const info = await api.lookupAsset(sym, provider);
+        if (seq !== lookupSeq.current) return;
+        if (info?.name) setName(info.name);
+        if (info?.currency) setCurrency(info.currency);
+        if (info?.type) setType(info.type);
+        if (info?.provider_id) setProviderID(info.provider_id);
+      } catch {
+        // 404 / network hiccup — leave the user's current values alone.
+      } finally {
+        if (seq === lookupSeq.current) setLooking(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [symbol, provider, editing]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -91,7 +117,7 @@ export function AssetModal({ asset, onClose, onSaved }) {
               onInput={e => setSymbol(e.currentTarget.value.toUpperCase())} />
           </div>
           <div class="field">
-            <label>Name</label>
+            <label>Name {looking && <span style={{ fontSize: 11, color: 'var(--muted)' }}>· looking up…</span>}</label>
             <input class="input"
               placeholder="Apple Inc."
               value={name} onInput={e => setName(e.currentTarget.value)} />
@@ -101,8 +127,8 @@ export function AssetModal({ asset, onClose, onSaved }) {
         <div class="row-2">
           <div class="field">
             <label>Type</label>
-            <select class="select" value={type} onChange={e => onType(e.currentTarget.value)}>
-              {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            <select class="select" value={type} onChange={e => setType(e.currentTarget.value)}>
+              {TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </div>
           <div class="field">
