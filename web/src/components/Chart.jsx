@@ -78,7 +78,9 @@ export function PerformanceChart({ series, privacy, currency }) {
     </div>;
   }
 
-  const padding = { l: 8, r: 8, t: 14, b: 30 };
+  // Right padding is generous so the final x-axis label ("Apr 21") isn't
+  // clipped; top padding leaves a quiet strip above the curve.
+  const padding = { l: 12, r: 28, t: 18, b: 32 };
   const { w, h } = size;
   const innerW = w - padding.l - padding.r;
   const innerH = h - padding.t - padding.b;
@@ -133,14 +135,14 @@ export function PerformanceChart({ series, privacy, currency }) {
         onMouseLeave={() => setHover(null)}>
         <defs>
           <linearGradient id="area-fill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--chart-line)" stopOpacity="0.22" />
+            <stop offset="0%" stopColor="var(--chart-line)" stopOpacity="0.12" />
             <stop offset="100%" stopColor="var(--chart-line)" stopOpacity="0" />
           </linearGradient>
         </defs>
 
         <path d={areaD} fill="url(#area-fill)" />
         <path d={pathD} fill="none" stroke="var(--chart-line)"
-          strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+          strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
 
         {xTicks.map((t, i) => (
           <text key={i} x={t.x} y={h - 8}
