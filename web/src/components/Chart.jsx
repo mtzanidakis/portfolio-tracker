@@ -1,180 +1,201 @@
-import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
-import { fmtDate, fmtMoney, fmtPct } from '../format.js';
+import { useEffect, useRef } from 'preact/hooks';
+import {
+  Chart,
+  LineController,
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+  Filler,
+  Tooltip,
+} from 'chart.js';
+import { fmtDate, fmtMoney } from '../format.js';
 
-// Monotone-cubic interpolation through a list of {x,y} points. Produces
-// a smooth line that never overshoots its data — unlike Catmull-Rom this
-// guarantees the curve stays monotonic between samples, which matches
-// how financial series are expected to be read.
-function monotoneCubic(points) {
-  const n = points.length;
-  if (n < 2) return '';
-  if (n === 2) {
-    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
-  }
+// Tree-shaken Chart.js registration — pulls in ~35 kB gzipped vs. ~65 kB
+// for chart.js/auto. Mutation observer re-themes the chart when the user
+// toggles aesthetic/theme so canvas colors don't lag behind CSS vars.
+Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
-  const dx = new Array(n - 1);
-  const slopes = new Array(n - 1);
-  for (let i = 0; i < n - 1; i++) {
-    dx[i] = points[i + 1].x - points[i].x;
-    slopes[i] = (points[i + 1].y - points[i].y) / dx[i];
-  }
-
-  // Fritsch–Carlson tangents.
-  const tangents = new Array(n);
-  tangents[0] = slopes[0];
-  tangents[n - 1] = slopes[n - 2];
-  for (let i = 1; i < n - 1; i++) {
-    if (slopes[i - 1] * slopes[i] <= 0) {
-      tangents[i] = 0;
-    } else {
-      const w1 = 2 * dx[i] + dx[i - 1];
-      const w2 = dx[i] + 2 * dx[i - 1];
-      tangents[i] = (w1 + w2) / (w1 / slopes[i - 1] + w2 / slopes[i]);
-    }
-  }
-
-  let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 0; i < n - 1; i++) {
-    const c1x = points[i].x + dx[i] / 3;
-    const c1y = points[i].y + (tangents[i] * dx[i]) / 3;
-    const c2x = points[i + 1].x - dx[i] / 3;
-    const c2y = points[i + 1].y - (tangents[i + 1] * dx[i]) / 3;
-    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${points[i + 1].x.toFixed(2)} ${points[i + 1].y.toFixed(2)}`;
-  }
-  return d;
+// cssVar reads a computed custom property from :root, falling back when
+// SSR or early renders haven't wired the stylesheet yet.
+function cssVar(name, fallback) {
+  if (typeof window === 'undefined') return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
 }
 
-// Pick up to `max` evenly-spaced tick indices from a series of length n.
-// Always includes the first and last index so the chart starts and ends
-// with visible labels (matches the mockup).
-function pickTickIndices(n, max) {
-  if (n <= max) return [...Array(n).keys()];
-  const out = new Set();
-  for (let i = 0; i < max; i++) {
-    out.add(Math.round((i / (max - 1)) * (n - 1)));
+// withAlpha turns a #rrggbb or rgb(…) into the same colour at the given
+// alpha in 0..1. Keeps the gradient in the chart-line hue regardless of
+// how the theme defines --chart-line.
+function withAlpha(color, alpha) {
+  const c = color.trim();
+  if (c.startsWith('#')) {
+    const hex = c.slice(1);
+    const full = hex.length === 3
+      ? hex.split('').map(ch => ch + ch).join('')
+      : hex;
+    const r = parseInt(full.slice(0, 2), 16);
+    const g = parseInt(full.slice(2, 4), 16);
+    const b = parseInt(full.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
-  return [...out].sort((a, b) => a - b);
+  const match = c.match(/rgba?\(([^)]+)\)/);
+  if (match) {
+    const parts = match[1].split(',').map(s => s.trim());
+    return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
+  }
+  return c;
 }
 
-// Line chart with crosshair. series = [{d: Date|string, v: number}]
 export function PerformanceChart({ series, privacy, currency }) {
   const wrapRef = useRef(null);
-  const [hover, setHover] = useState(null);
-  const [size, setSize] = useState({ w: 900, h: 320 });
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
 
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(entries => {
-      for (const e of entries) setSize({ w: Math.max(400, e.contentRect.width), h: 320 });
+  // Colour helpers are captured fresh inside build/restyle so theme
+  // switches propagate without having to destroy the chart.
+  const build = () => {
+    if (!canvasRef.current) return null;
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return null;
+
+    const labels = (series || []).map(p => p.d);
+    const data = (series || []).map(p => p.v);
+
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data,
+          borderColor: (c) => cssVar('--chart-line', '#60a5fa'),
+          borderWidth: 2,
+          // Gradient is scriptable so it re-evaluates on resize (chartArea
+          // changes) and on theme change (line colour changes).
+          backgroundColor: (c) => {
+            const area = c.chart.chartArea;
+            if (!area) return 'transparent';
+            const line = cssVar('--chart-line', '#60a5fa');
+            const g = c.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+            g.addColorStop(0, withAlpha(line, 0.18));
+            g.addColorStop(1, withAlpha(line, 0));
+            return g;
+          },
+          fill: true,
+          tension: 0.35,
+          cubicInterpolationMode: 'monotone',
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHoverBorderWidth: 2,
+          pointHoverBorderColor: cssVar('--chart-line', '#60a5fa'),
+          pointHoverBackgroundColor: cssVar('--bg-elev', '#121821'),
+          pointHitRadius: 10,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        layout: { padding: { top: 8, right: 18, bottom: 0, left: 4 } },
+        scales: {
+          x: {
+            type: 'category',
+            grid: { display: false },
+            border: { display: false },
+            ticks: {
+              autoSkip: true,
+              maxTicksLimit: 6,
+              maxRotation: 0,
+              align: 'center',
+              padding: 8,
+              color: cssVar('--text-faint', '#64748b'),
+              font: { family: cssVar('--font-mono', 'ui-monospace, monospace'), size: 11 },
+              callback(val) {
+                const lbl = this.getLabelForValue(val);
+                return fmtDate(lbl);
+              },
+            },
+          },
+          y: {
+            display: false,
+            grace: '8%',
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: true,
+            backgroundColor: cssVar('--bg-elev', '#121821'),
+            borderColor: cssVar('--border-strong', '#2c3849'),
+            borderWidth: 1,
+            titleColor: cssVar('--text-muted', '#94a3b8'),
+            bodyColor: cssVar('--text', '#e6edf6'),
+            titleFont: { family: cssVar('--font-sans', 'system-ui'), size: 11, weight: '400' },
+            bodyFont: { family: cssVar('--font-mono', 'ui-monospace, monospace'), size: 13, weight: '500' },
+            padding: { x: 12, y: 8 },
+            displayColors: false,
+            cornerRadius: 6,
+            callbacks: {
+              title: (items) => items.length
+                ? fmtDate(items[0].label, { month: 'short', day: 'numeric', year: 'numeric' })
+                : '',
+              label: (item) => privacy
+                ? '••••••'
+                : fmtMoney(item.parsed.y, currency),
+            },
+          },
+        },
+      },
     });
-    ro.observe(el);
-    return () => ro.disconnect();
+    return chart;
+  };
+
+  // (Re)build on series / currency / privacy changes.
+  useEffect(() => {
+    chartRef.current?.destroy();
+    chartRef.current = build();
+    return () => {
+      chartRef.current?.destroy();
+      chartRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [series, currency, privacy]);
+
+  // Re-theme on aesthetic/theme attribute flips — the user can toggle
+  // dark/light from the tweaks panel and we want the canvas to follow.
+  useEffect(() => {
+    const obs = new MutationObserver(() => {
+      const chart = chartRef.current;
+      if (!chart) return;
+      const line = cssVar('--chart-line', '#60a5fa');
+      const ds = chart.data.datasets[0];
+      ds.pointHoverBorderColor = line;
+      ds.pointHoverBackgroundColor = cssVar('--bg-elev', '#121821');
+      chart.options.scales.x.ticks.color = cssVar('--text-faint', '#64748b');
+      chart.options.plugins.tooltip.backgroundColor = cssVar('--bg-elev', '#121821');
+      chart.options.plugins.tooltip.borderColor = cssVar('--border-strong', '#2c3849');
+      chart.options.plugins.tooltip.titleColor = cssVar('--text-muted', '#94a3b8');
+      chart.options.plugins.tooltip.bodyColor = cssVar('--text', '#e6edf6');
+      chart.update('none');
+    });
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'data-aesthetic'],
+    });
+    return () => obs.disconnect();
   }, []);
 
   if (!series || series.length < 2) {
-    return <div class="chart-wrap" ref={wrapRef}>
-      <div class="empty" style={{ padding: 24 }}>No performance data yet.</div>
-    </div>;
+    return (
+      <div class="chart-wrap" ref={wrapRef}>
+        <div class="empty" style={{ padding: 24 }}>No performance data yet.</div>
+      </div>
+    );
   }
-
-  // Right padding is generous so the final x-axis label ("Apr 21") isn't
-  // clipped; top padding leaves a quiet strip above the curve.
-  const padding = { l: 12, r: 28, t: 18, b: 32 };
-  const { w, h } = size;
-  const innerW = w - padding.l - padding.r;
-  const innerH = h - padding.t - padding.b;
-
-  const values = series.map(s => s.v);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const yPad = range * 0.12;
-  const yMin = min - yPad;
-  const yMax = max + yPad;
-
-  const x = i => padding.l + (i / (series.length - 1)) * innerW;
-  const y = v => padding.t + innerH - ((v - yMin) / (yMax - yMin)) * innerH;
-
-  const pts = useMemo(
-    () => series.map((s, i) => ({ x: x(i), y: y(s.v) })),
-    [series, w, h]
-  );
-
-  const pathD = useMemo(() => monotoneCubic(pts), [pts]);
-  const areaD = useMemo(() => {
-    if (!pathD) return '';
-    const last = pts[pts.length - 1];
-    const first = pts[0];
-    const baseY = padding.t + innerH;
-    return `${pathD} L ${last.x.toFixed(2)} ${baseY} L ${first.x.toFixed(2)} ${baseY} Z`;
-  }, [pathD, pts, padding.t, innerH]);
-
-  const onMove = e => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const ratio = Math.max(0, Math.min(1, (px - padding.l) / innerW));
-    const i = Math.round(ratio * (series.length - 1));
-    setHover({ i, px: x(i), py: y(series[i].v) });
-  };
-
-  const xTickIdxs = pickTickIndices(series.length, 6);
-  const xTicks = xTickIdxs.map(i => ({ i, x: x(i), d: series[i].d }));
-
-  const firstV = series[0].v;
-  const hoverPoint = hover ? series[hover.i] : null;
-  const hoverDelta = hoverPoint ? hoverPoint.v - firstV : 0;
-  const hoverDeltaPct = hoverPoint && firstV !== 0 ? (hoverDelta / firstV) * 100 : 0;
-
   return (
-    <div class="chart-wrap" ref={wrapRef}>
-      <svg class="chart-svg"
-        viewBox={`0 0 ${w} ${h}`}
-        preserveAspectRatio="none"
-        onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}>
-        <defs>
-          <linearGradient id="area-fill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--chart-line)" stopOpacity="0.12" />
-            <stop offset="100%" stopColor="var(--chart-line)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-
-        <path d={areaD} fill="url(#area-fill)" />
-        <path d={pathD} fill="none" stroke="var(--chart-line)"
-          strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-
-        {xTicks.map((t, i) => (
-          <text key={i} x={t.x} y={h - 8}
-            fill="var(--text-faint)" fontSize="11"
-            textAnchor={i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'}
-            fontFamily="var(--font-mono)">
-            {fmtDate(t.d)}
-          </text>
-        ))}
-
-        {hover && (
-          <>
-            <line x1={hover.px} x2={hover.px} y1={padding.t} y2={padding.t + innerH}
-              stroke="var(--chart-line)" strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />
-            <circle cx={hover.px} cy={hover.py} r="5"
-              fill="var(--bg-elev)" stroke="var(--chart-line)" strokeWidth="2" />
-          </>
-        )}
-      </svg>
-
-      {hover && hoverPoint && (
-        <div class="chart-tooltip"
-          style={{ left: `${(hover.px / w) * 100}%`, top: `${((hover.py - 12) / h) * 100}%` }}>
-          <div class="date">{fmtDate(hoverPoint.d, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
-          <div class="val">
-            {privacy ? <span class="masked">{fmtMoney(hoverPoint.v, currency)}</span> : fmtMoney(hoverPoint.v, currency)}
-          </div>
-          <div style={{ fontSize: 11, color: hoverDelta >= 0 ? 'var(--pos)' : 'var(--neg)', fontFamily: 'var(--font-mono)' }}>
-            {fmtPct(hoverDeltaPct)} ({fmtMoney(hoverDelta, currency, { sign: true })})
-          </div>
-        </div>
-      )}
+    <div class="chart-wrap" ref={wrapRef} style={{ height: 320 }}>
+      <canvas ref={canvasRef}></canvas>
     </div>
   );
 }

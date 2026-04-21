@@ -8,6 +8,7 @@
     "build:dev": "NODE_ENV=development node build.mjs"
   },
   "dependencies": {
+    "chart.js": "^4.5.1",
     "preact": "^10.26.0"
   },
   "devDependencies": {
