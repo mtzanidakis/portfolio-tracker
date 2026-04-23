@@ -122,17 +122,20 @@ export function AssetModal({ asset, onClose, onSaved }) {
     : 'no external provider; leave blank';
 
   // Preview of the logo the form will save — re-rendered live as the
-  // lookup resolves or the user toggles between cash and non-cash.
+  // lookup resolves or the user toggles between cash and non-cash. The
+  // asset isn't in the DB yet so we pass the raw upstream URL via
+  // `previewURL` instead of the usual proxy path.
   const previewAsset = isCash
     ? { type: 'cash', currency, symbol: `CASH-${currency}` }
     : { type, currency, symbol: symbol.trim().toUpperCase(), logo_url: logoURL };
+  const previewLogoURL = !isCash ? logoURL : undefined;
 
   return (
     <div class="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
       <form class="modal" onSubmit={submit}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <AssetLogo asset={previewAsset} size={40} />
+            <AssetLogo asset={previewAsset} previewURL={previewLogoURL} size={40} />
             <div>
               <h2 class="modal-title">{editing ? 'Edit asset' : 'Add asset'}</h2>
               <div class="modal-sub">

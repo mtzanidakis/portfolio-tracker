@@ -9,14 +9,18 @@ const CUR_SYMBOL = {
 
 // AssetLogo renders a 32×32 (by default) circular badge for an asset.
 // - cash       → currency glyph in a neutral circle
-// - logo_url   → <img> fetched from the resolved provider URL
+// - logo_url   → <img> served by our /api/v1/assets/{sym}/logo proxy,
+//                which fetches the provider URL once and caches the
+//                bytes in sqlite — the browser never talks to Clearbit
+//                or CoinGecko directly.
 // - otherwise  → the asset's first two letters, for a graceful fallback
 // The component swaps to the initials fallback if the image 404s, and
-// resets that state whenever the logo URL changes so a re-lookup
-// (e.g. after editing the asset) is not stuck on the previous failure.
-export function AssetLogo({ asset, size = 32 }) {
+// resets that state whenever the asset symbol or URL changes so a
+// re-lookup (e.g. after editing the asset) is not stuck on the previous
+// failure.
+export function AssetLogo({ asset, size = 32, previewURL }) {
   const [failed, setFailed] = useState(false);
-  useEffect(() => { setFailed(false); }, [asset?.logo_url]);
+  useEffect(() => { setFailed(false); }, [asset?.symbol, asset?.logo_url, previewURL]);
 
   const base = {
     width: size, height: size,
@@ -44,12 +48,22 @@ export function AssetLogo({ asset, size = 32 }) {
     );
   }
 
-  if (asset.logo_url && !failed) {
+  // In the Add-asset preview the row isn't in the DB yet, so the proxy
+  // would 404. The caller passes `previewURL` to have us hit the raw
+  // provider URL directly just for that transient preview.
+  const src = previewURL
+    || (asset.logo_url && asset.symbol
+        ? `/api/v1/assets/${encodeURIComponent(asset.symbol)}/logo`
+        : '');
+  if (src && !failed) {
+    // Strip Referer on the transient preview so Clearbit/CoinGecko
+    // don't see the page URL; the proxy path is same-origin and safe.
+    const referrerPolicy = previewURL ? 'no-referrer' : undefined;
     return (
       <img class="asset-logo" alt={asset.symbol || ''}
-        src={asset.logo_url}
+        src={src}
         loading="lazy"
-        referrerpolicy="no-referrer"
+        referrerpolicy={referrerPolicy}
         onError={() => setFailed(true)}
         style={{ ...base, background: 'var(--bg-sunken)', objectFit: 'cover' }} />
     );
