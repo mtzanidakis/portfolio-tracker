@@ -22,9 +22,9 @@ const FILTER_TO_SIDES = {
 const PAGE_SIZE = 50;
 const Q_DEBOUNCE_MS = 300;
 
-export function ActivitiesPage({ privacy, currency, user }) {
+export function ActivitiesPage({ privacy, currency, user, initialAccountId = 0 }) {
   const [filter, setFilter] = useState('all');
-  const [accountId, setAccountId] = useState(0); // 0 = all
+  const [accountId, setAccountId] = useState(initialAccountId || 0); // 0 = all
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('date');
   const [order, setOrder] = useState('desc');

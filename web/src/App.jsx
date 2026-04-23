@@ -32,6 +32,10 @@ export function App() {
   const [tokensOpen, setTokensOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  // Seed state for cross-page navigation. Clicking an account card
+  // routes to Activities with this id pre-selected; the ActivitiesPage
+  // reads it once on mount and controls the filter itself thereafter.
+  const [activityAccountFilter, setActivityAccountFilter] = useState(0);
 
   useEffect(() => { localStorage.setItem('pt-page', page); }, [page]);
   useEffect(() => {
@@ -90,6 +94,12 @@ export function App() {
   const currency = user.base_currency;
   const pageProps = { privacy, currency };
 
+  const openAccountActivity = (accountId) => {
+    setActivityAccountFilter(accountId);
+    setPage('activities');
+    setRefreshTick(t => t + 1); // force remount so the initial filter takes
+  };
+
   return (
     <div class="app" data-screen-label={page}>
       <Sidebar
@@ -110,8 +120,8 @@ export function App() {
             * spread — it has to be on the element directly. */}
           {page === 'performance' && <PerformancePage key={refreshTick} {...pageProps} />}
           {page === 'allocations' && <AllocationsPage key={refreshTick} {...pageProps} />}
-          {page === 'activities'  && <ActivitiesPage  key={refreshTick} {...pageProps} user={user} />}
-          {page === 'accounts'    && <AccountsPage    key={refreshTick} {...pageProps} />}
+          {page === 'activities'  && <ActivitiesPage  key={refreshTick} {...pageProps} user={user} initialAccountId={activityAccountFilter} />}
+          {page === 'accounts'    && <AccountsPage    key={refreshTick} {...pageProps} onOpenActivity={openAccountActivity} />}
           {page === 'assets'      && <AssetsPage      key={refreshTick} {...pageProps} />}
         </div>
       </main>

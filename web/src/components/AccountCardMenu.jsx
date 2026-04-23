@@ -23,7 +23,7 @@ export function AccountCardMenu({ onEdit, onDelete, onClose }) {
 
   const item = (label, fn, extraStyle = {}) => (
     <button
-      onClick={() => { fn(); onClose(); }}
+      onClick={(e) => { e.stopPropagation(); fn(); onClose(); }}
       style={{
         display: 'block', width: '100%', textAlign: 'left',
         padding: '8px 12px', border: 'none', background: 'transparent',
@@ -36,7 +36,7 @@ export function AccountCardMenu({ onEdit, onDelete, onClose }) {
   );
 
   return (
-    <div ref={ref} style={{
+    <div ref={ref} onClick={(e) => e.stopPropagation()} style={{
       position: 'absolute',
       right: 8, top: 'calc(100% + 2px)',
       minWidth: 140,

@@ -5,7 +5,7 @@ import { AccountCardMenu } from './AccountCardMenu.jsx';
 import { fmtMoney } from '../format.js';
 import { api } from '../api.js';
 
-export function AccountsPage() {
+export function AccountsPage({ onOpenActivity }) {
   const [accounts, setAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
   // `holdings` is the cross-account aggregate from /api/v1/holdings,
@@ -140,8 +140,21 @@ export function AccountsPage() {
             count, openCost, openValue, unrealized, valueStale, hasOpen,
             realized, cashBalance, hasTrade, hasCash,
           } = statsFor(a.id);
+          // Card is clickable when the account has activity — takes
+          // the user straight to the Activities page with this
+          // account's id pre-selected as the filter. Keyboard-friendly
+          // via role=button + onKeyDown.
+          const clickable = count > 0 && typeof onOpenActivity === 'function';
+          const openActivity = () => { if (clickable) onOpenActivity(a.id); };
           return (
-            <div key={a.id} class="acc-card">
+            <div key={a.id} class="acc-card"
+              onClick={clickable ? openActivity : undefined}
+              onKeyDown={clickable ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openActivity(); }
+              } : undefined}
+              role={clickable ? 'button' : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              style={clickable ? { cursor: 'pointer' } : undefined}>
               <div class="acc-head" style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                   <div class="acc-badge" style={{ background: a.color || '#c8502a' }}>{a.short || '??'}</div>
