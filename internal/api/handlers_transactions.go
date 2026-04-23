@@ -81,13 +81,30 @@ func createTransactionHandler(d *db.DB) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "account not found")
 			return
 		}
+		// Cross-validation: asset type must match the side. Cash sides
+		// only apply to cash assets; buy/sell must target a non-cash
+		// asset. Cash operations are always at unit price 1 by
+		// definition, so we normalise that here.
+		asset, err := d.GetAsset(r.Context(), req.AssetSymbol)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "asset not found")
+			return
+		}
+		if err := validateSideVsAsset(domain.TxSide(req.Side), asset.Type); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		price := req.Price
+		if domain.TxSide(req.Side).IsCash() {
+			price = 1
+		}
 		tx := &domain.Transaction{
 			UserID:      u.ID,
 			AccountID:   req.AccountID,
 			AssetSymbol: req.AssetSymbol,
 			Side:        domain.TxSide(req.Side),
 			Qty:         req.Qty,
-			Price:       req.Price,
+			Price:       price,
 			Fee:         req.Fee,
 			FxToBase:    req.FxToBase,
 			OccurredAt:  req.OccurredAt,
@@ -151,6 +168,20 @@ func updateTransactionHandler(d *db.DB) http.HandlerFunc {
 			tx.OccurredAt = req.OccurredAt
 		}
 		tx.Note = req.Note
+		// Re-validate the (possibly patched) side against the asset so
+		// we can't smuggle in a mismatched combination on PATCH either.
+		asset, aerr := d.GetAsset(r.Context(), tx.AssetSymbol)
+		if aerr != nil {
+			writeError(w, http.StatusBadRequest, "asset not found")
+			return
+		}
+		if err := validateSideVsAsset(tx.Side, asset.Type); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if tx.Side.IsCash() {
+			tx.Price = 1
+		}
 		if err := d.UpdateTransaction(r.Context(), tx); err != nil {
 			writeDBError(w, err)
 			return
@@ -191,6 +222,20 @@ func validateTx(req txRequest) error {
 		return errBadReq("fx_to_base must be positive")
 	case req.OccurredAt.IsZero():
 		return errBadReq("occurred_at is required")
+	}
+	return nil
+}
+
+// validateSideVsAsset enforces the side/asset-type compatibility:
+// deposit/withdraw/interest only apply to cash assets; buy/sell only
+// apply to non-cash assets. Called after the request passes the
+// request-level validateTx check.
+func validateSideVsAsset(side domain.TxSide, t domain.AssetType) error {
+	if side.IsCash() && t != domain.AssetCash {
+		return errBadReq("deposit/withdraw/interest require a cash asset")
+	}
+	if !side.IsCash() && t == domain.AssetCash {
+		return errBadReq("buy/sell cannot target a cash asset")
 	}
 	return nil
 }
