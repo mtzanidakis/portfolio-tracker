@@ -85,8 +85,10 @@ func TestParseAssetType(t *testing.T) {
 }
 
 func TestTxSide(t *testing.T) {
-	if !SideBuy.Valid() || !SideSell.Valid() {
-		t.Error("buy/sell should be valid")
+	for _, s := range AllTxSides {
+		if !s.Valid() {
+			t.Errorf("%s should be valid", s)
+		}
 	}
 	if TxSide("swap").Valid() {
 		t.Error("swap should not be valid")
@@ -98,5 +100,25 @@ func TestTxSide(t *testing.T) {
 	}
 	if _, err := ParseTxSide("hodl"); err == nil {
 		t.Error("expected error for hodl")
+	}
+
+	// IsCash: only deposit/withdraw/interest.
+	cashSides := map[TxSide]bool{
+		SideDeposit: true, SideWithdraw: true, SideInterest: true,
+	}
+	for _, s := range AllTxSides {
+		if got, want := s.IsCash(), cashSides[s]; got != want {
+			t.Errorf("%s.IsCash() = %v, want %v", s, got, want)
+		}
+	}
+
+	// IncreasesQty: buy/deposit/interest.
+	addSides := map[TxSide]bool{
+		SideBuy: true, SideDeposit: true, SideInterest: true,
+	}
+	for _, s := range AllTxSides {
+		if got, want := s.IncreasesQty(), addSides[s]; got != want {
+			t.Errorf("%s.IncreasesQty() = %v, want %v", s, got, want)
+		}
 	}
 }

@@ -77,18 +77,39 @@ func ParseAssetType(s string) (AssetType, error) {
 	return t, nil
 }
 
-// TxSide is the side of a transaction (buy or sell).
+// TxSide is the kind of operation recorded by a transaction.
+// buy/sell apply to non-cash assets (stocks/ETFs/crypto);
+// deposit/withdraw/interest apply to cash assets.
 type TxSide string
 
 // Transaction sides.
 const (
-	SideBuy  TxSide = "buy"
-	SideSell TxSide = "sell"
+	SideBuy      TxSide = "buy"
+	SideSell     TxSide = "sell"
+	SideDeposit  TxSide = "deposit"
+	SideWithdraw TxSide = "withdraw"
+	SideInterest TxSide = "interest"
 )
+
+// AllTxSides is the canonical list of transaction sides.
+var AllTxSides = []TxSide{SideBuy, SideSell, SideDeposit, SideWithdraw, SideInterest}
 
 // Valid reports whether s is a known side.
 func (s TxSide) Valid() bool {
-	return s == SideBuy || s == SideSell
+	return slices.Contains(AllTxSides, s)
+}
+
+// IsCash reports whether the side is one that only applies to cash
+// assets (deposit / withdraw / interest). Useful for validation and for
+// choosing between buy/sell and cash-style rendering in the UI.
+func (s TxSide) IsCash() bool {
+	return s == SideDeposit || s == SideWithdraw || s == SideInterest
+}
+
+// IncreasesQty reports whether applying this side adds to the holding
+// (buy/deposit/interest) rather than subtracting from it (sell/withdraw).
+func (s TxSide) IncreasesQty() bool {
+	return s == SideBuy || s == SideDeposit || s == SideInterest
 }
 
 // ParseTxSide parses a user-supplied side, case-insensitive.

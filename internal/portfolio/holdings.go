@@ -52,17 +52,19 @@ func Holdings(txs []*domain.Transaction) ([]Holding, error) {
 			h = &Holding{Symbol: tx.AssetSymbol}
 			byMap[tx.AssetSymbol] = h
 		}
-		switch tx.Side {
-		case domain.SideBuy:
+		switch {
+		case tx.Side.IncreasesQty():
+			// buy / deposit / interest — all add qty and extend cost
+			// basis by the per-unit price plus whatever fee was paid.
 			addNative := tx.Qty*tx.Price + tx.Fee
 			h.Qty += tx.Qty
 			h.CostNative += addNative
 			h.CostBase += addNative * tx.FxToBase
-		case domain.SideSell:
+		case tx.Side == domain.SideSell || tx.Side == domain.SideWithdraw:
 			if tx.Qty > h.Qty+epsilon {
 				return nil, fmt.Errorf(
-					"sell of %g %s exceeds current holding of %g",
-					tx.Qty, tx.AssetSymbol, h.Qty,
+					"%s of %g %s exceeds current holding of %g",
+					tx.Side, tx.Qty, tx.AssetSymbol, h.Qty,
 				)
 			}
 			// Reduce cost basis at current average cost.

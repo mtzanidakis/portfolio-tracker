@@ -182,3 +182,45 @@ func TestHoldings_InvalidSide(t *testing.T) {
 		t.Fatal("expected error for invalid side")
 	}
 }
+
+func TestHoldings_CashDepositsAndInterest(t *testing.T) {
+	// Deposit 500 at fx 1.0, interest 10 at fx 1.0: qty=510, cost=510.
+	// Interest behaves like a deposit: both grow the cost basis.
+	got, err := Holdings([]*domain.Transaction{
+		tx(1, "CASH-EUR", domain.SideDeposit, 500, 1, 0, 1.0, "2026-01-01"),
+		tx(2, "CASH-EUR", domain.SideInterest, 10, 1, 0, 1.0, "2026-02-01"),
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(got) != 1 || got[0].Qty != 510 {
+		t.Fatalf("wrong qty: %+v", got)
+	}
+	if !approx(got[0].CostBase, 510) {
+		t.Errorf("cost base: got %v, want 510", got[0].CostBase)
+	}
+}
+
+func TestHoldings_CashWithdraw(t *testing.T) {
+	// Deposit 1000, withdraw 300 → qty=700, cost=700 (average-cost).
+	got, _ := Holdings([]*domain.Transaction{
+		tx(1, "CASH-EUR", domain.SideDeposit, 1000, 1, 0, 1.0, "2026-01-01"),
+		tx(2, "CASH-EUR", domain.SideWithdraw, 300, 1, 0, 1.0, "2026-01-10"),
+	})
+	if got[0].Qty != 700 {
+		t.Errorf("qty: %v", got[0].Qty)
+	}
+	if !approx(got[0].CostBase, 700) {
+		t.Errorf("cost: %v", got[0].CostBase)
+	}
+}
+
+func TestHoldings_CashOverdraft(t *testing.T) {
+	_, err := Holdings([]*domain.Transaction{
+		tx(1, "CASH-EUR", domain.SideDeposit, 100, 1, 0, 1.0, "2026-01-01"),
+		tx(2, "CASH-EUR", domain.SideWithdraw, 500, 1, 0, 1.0, "2026-01-02"),
+	})
+	if err == nil {
+		t.Fatal("expected error for withdraw exceeding balance")
+	}
+}

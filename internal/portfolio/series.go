@@ -92,12 +92,13 @@ func SeriesFromTransactions(
 				h = &holdingState{}
 				state[tx.AssetSymbol] = h
 			}
-			switch tx.Side {
-			case domain.SideBuy:
+			switch {
+			case tx.Side.IncreasesQty():
+				// buy / deposit / interest
 				addNative := tx.Qty*tx.Price + tx.Fee
 				h.qty += tx.Qty
 				h.costBase += addNative * tx.FxToBase
-			case domain.SideSell:
+			case tx.Side == domain.SideSell || tx.Side == domain.SideWithdraw:
 				avg := 0.0
 				if h.qty > 0 {
 					avg = h.costBase / h.qty

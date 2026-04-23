@@ -3,7 +3,7 @@ CREATE TABLE transactions (
     user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     account_id    INTEGER NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
     asset_symbol  TEXT    NOT NULL REFERENCES assets(symbol) ON DELETE CASCADE,
-    side          TEXT    NOT NULL CHECK (side IN ('buy','sell')),
+    side          TEXT    NOT NULL CHECK (side IN ('buy','sell','deposit','withdraw','interest')),
     qty           REAL    NOT NULL CHECK (qty > 0),
     price         REAL    NOT NULL CHECK (price >= 0),
     fee           REAL    NOT NULL DEFAULT 0 CHECK (fee >= 0),
