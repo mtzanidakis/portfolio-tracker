@@ -24,7 +24,7 @@ const maxLogoBytes = 2 << 20
 // from. This blocks SSRF via a rogue asset.logo_url and keeps us from
 // accidentally acting as a free image-proxy for the world.
 var logoHostAllowlist = map[string]struct{}{
-	"logo.clearbit.com":         {},
+	"assets.parqet.com":         {},
 	"assets.coingecko.com":      {},
 	"coin-images.coingecko.com": {},
 }

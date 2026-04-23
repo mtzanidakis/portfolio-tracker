@@ -188,10 +188,10 @@ func (y *YahooProvider) Fetch(ctx context.Context, symbols []string) ([]PriceQuo
 // Yahoo has no match (not an error — the caller may try another
 // provider). Name prefers longName and falls back to shortName.
 //
-// For stocks / ETFs the method also attempts a second call to
-// /v10/finance/quoteSummary to extract the company website, which is
-// then turned into a Clearbit logo URL. Logo resolution is best-effort:
-// a failure there does not fail the lookup.
+// For stocks / ETFs the logo URL is built against Parqet's free
+// ticker-keyed logo CDN (https://assets.parqet.com/logos/symbol/{sym}).
+// No extra API call is needed — the caller will find out at render time
+// whether the image actually exists.
 func (y *YahooProvider) LookupSymbol(ctx context.Context, symbol string) (*SymbolInfo, error) {
 	symbol = strings.TrimSpace(symbol)
 	if symbol == "" {
@@ -222,58 +222,20 @@ func (y *YahooProvider) LookupSymbol(ctx context.Context, symbol string) (*Symbo
 		ProviderID: r.Symbol,
 	}
 	if info.AssetType == domain.AssetStock || info.AssetType == domain.AssetETF {
-		info.LogoURL = y.fetchLogoURL(ctx, r.Symbol)
+		info.LogoURL = parqetLogoURL(r.Symbol)
 	}
 	return info, nil
 }
 
-type yahooQuoteSummaryResponse struct {
-	QuoteSummary struct {
-		Result []struct {
-			AssetProfile struct {
-				Website string `json:"website"`
-			} `json:"assetProfile"`
-			SummaryProfile struct {
-				Website string `json:"website"`
-			} `json:"summaryProfile"`
-		} `json:"result"`
-	} `json:"quoteSummary"`
-}
-
-// fetchLogoURL turns a ticker into a logo URL by asking Yahoo for the
-// company website (via assetProfile/summaryProfile) and handing the
-// resulting hostname to Clearbit's free logo service. Returns "" on any
-// failure; the caller treats an empty URL as "no logo available".
-func (y *YahooProvider) fetchLogoURL(ctx context.Context, symbol string) string {
-	params := url.Values{"modules": {"assetProfile,summaryProfile"}}
-	body, err := y.authedGet(ctx, "/v10/finance/quoteSummary/"+url.PathEscape(symbol), params)
-	if err != nil {
+// parqetLogoURL returns the Parqet CDN URL for a given ticker. Parqet
+// responds 404 for unknown symbols, which flows through the proxy and
+// becomes an initials fallback in the UI — no harm done.
+func parqetLogoURL(symbol string) string {
+	symbol = strings.TrimSpace(symbol)
+	if symbol == "" {
 		return ""
 	}
-	var parsed yahooQuoteSummaryResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return ""
-	}
-	if len(parsed.QuoteSummary.Result) == 0 {
-		return ""
-	}
-	site := parsed.QuoteSummary.Result[0].AssetProfile.Website
-	if site == "" {
-		site = parsed.QuoteSummary.Result[0].SummaryProfile.Website
-	}
-	if site == "" {
-		return ""
-	}
-	u, err := url.Parse(site)
-	if err != nil {
-		return ""
-	}
-	host := strings.ToLower(u.Hostname())
-	if host == "" {
-		return ""
-	}
-	host = strings.TrimPrefix(host, "www.")
-	return "https://logo.clearbit.com/" + host
+	return "https://assets.parqet.com/logos/symbol/" + url.PathEscape(symbol)
 }
 
 // yahooQuoteTypeToAsset maps Yahoo's quoteType enum to our AssetType.
