@@ -24,7 +24,10 @@ const Q_DEBOUNCE_MS = 300;
 
 export function ActivitiesPage({ privacy, currency, user }) {
   const [filter, setFilter] = useState('all');
+  const [accountId, setAccountId] = useState(0); // 0 = all
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('date');
+  const [order, setOrder] = useState('desc');
   // Items are the paginated slice from the server. Aggregates for the
   // hero come from /api/v1/transactions/summary so we never load the
   // whole history just to sum it.
@@ -74,6 +77,9 @@ export function ActivitiesPage({ privacy, currency, user }) {
       const { items: page, nextCursor } = await api.transactionsPage({
         q: debouncedQ,
         side: FILTER_TO_SIDES[filter] || '',
+        accountId,
+        sort,
+        order,
         cursor,
         limit: PAGE_SIZE,
       });
@@ -98,11 +104,34 @@ export function ActivitiesPage({ privacy, currency, user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Any time the filter or debounced query changes, reset to page 1.
+  // Any time the filter, debounced query, account, sort or order
+  // change, reset to page 1 with the new parameters.
   useEffect(() => {
     fetchPage({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, debouncedQ]);
+  }, [filter, debouncedQ, accountId, sort, order]);
+
+  // Click a header to sort; clicking the active column flips asc/desc.
+  const toggleSort = (col) => {
+    if (col === sort) {
+      setOrder(o => o === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSort(col);
+      setOrder(col === 'date' ? 'desc' : 'asc');
+    }
+  };
+  const sortArrow = (col) => {
+    if (col !== sort) return '';
+    return order === 'asc' ? ' ↑' : ' ↓';
+  };
+  const sortableTh = (col, label, extraStyle = {}) => (
+    <th
+      onClick={() => toggleSort(col)}
+      style={{ cursor: 'pointer', userSelect: 'none', ...extraStyle }}
+      title={`Sort by ${label.toLowerCase()}`}>
+      {label}{sortArrow(col)}
+    </th>
+  );
 
   if (err) return <div class="empty">Error: {err}</div>;
 
@@ -188,12 +217,20 @@ export function ActivitiesPage({ privacy, currency, user }) {
       <div class="card">
         <div class="card-header">
           <div class="card-title">Transaction history</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <div class="timeframe">
               <button class={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>All</button>
               <button class={filter === 'trades' ? 'active' : ''} onClick={() => setFilter('trades')}>Trades</button>
               <button class={filter === 'cash' ? 'active' : ''} onClick={() => setFilter('cash')}>Cash</button>
             </div>
+            <select class="select" style={{ width: 'auto', padding: '6px 10px', fontSize: 13 }}
+              value={accountId}
+              onChange={e => setAccountId(parseInt(e.currentTarget.value, 10))}>
+              <option value={0}>All accounts</option>
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
             <div class="search-wrap">
               <Icon name="search" />
               <input class="search" placeholder="Filter…" value={query}
@@ -205,14 +242,14 @@ export function ActivitiesPage({ privacy, currency, user }) {
         <table class="table">
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Side</th>
-              <th>Asset</th>
-              <th style={{ textAlign: 'right' }}>Quantity</th>
-              <th style={{ textAlign: 'right' }}>Price</th>
-              <th style={{ textAlign: 'right' }}>Fee</th>
-              <th style={{ textAlign: 'right' }}>Total</th>
-              <th>Account</th>
+              {sortableTh('date',    'Date')}
+              {sortableTh('side',    'Side')}
+              {sortableTh('symbol',  'Asset')}
+              {sortableTh('qty',     'Quantity', { textAlign: 'right' })}
+              {sortableTh('price',   'Price',    { textAlign: 'right' })}
+              {sortableTh('total',   'Total',    { textAlign: 'right' })}
+              {sortableTh('fee',     'Fee',      { textAlign: 'right' })}
+              {sortableTh('account', 'Account')}
               <th>Note</th>
               <th></th>
             </tr>
@@ -248,11 +285,11 @@ export function ActivitiesPage({ privacy, currency, user }) {
                   <td class="num" data-label="Price" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
                     {isCashTx ? '—' : fmtMoney(tx.price, accCur)}
                   </td>
-                  <td class="num" data-label="Fee" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
-                    {tx.fee ? fmtMoney(tx.fee, rowCur) : '—'}
-                  </td>
                   <td class="num" data-label="Total" style={{ textAlign: 'right' }}>
                     {privacy ? <span class="masked">{fmtMoney(total, rowCur)}</span> : fmtMoney(total, rowCur)}
+                  </td>
+                  <td class="num" data-label="Fee" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
+                    {tx.fee ? fmtMoney(tx.fee, rowCur) : '—'}
                   </td>
                   <td data-label="Account" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{acc?.name}</td>
                   <td data-label="Note" style={{ fontSize: 12, color: 'var(--text-faint)' }}>{tx.note || '—'}</td>

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,11 +26,75 @@ type TxFilter struct {
 	// tx's asset symbol, the asset's display name (via LEFT JOIN) and
 	// the tx note. Empty string disables the filter.
 	Q string
-	// Cursor pins a "continue after" position for keyset pagination
-	// using the same (occurred_at, id) DESC ordering as the main query.
-	// Both fields must be populated to take effect.
-	CursorOccurredAt time.Time
-	CursorID         int64
+	// Sort / Order control ORDER BY. Sort must be one of the keys in
+	// txSortColumns; unknown values fall back to "date". Order is
+	// "asc" or "desc"; anything else is treated as "desc".
+	Sort  string
+	Order string
+	// Keyset cursor. CursorSort must match Sort (handler verifies);
+	// CursorSortVal is the opaque string form of the last row's sort
+	// value and CursorID the tiebreaker. Populated together or none.
+	CursorSort    string
+	CursorSortVal string
+	CursorID      int64
+}
+
+// txSortColumns maps the public sort keys onto SQL column expressions.
+// "total" is a computed column (qty×price) — fine for ORDER BY; cursor
+// predicates reuse the same expression so the keyset boundary matches.
+var txSortColumns = map[string]string{
+	"date":    "t.occurred_at",
+	"symbol":  "t.asset_symbol",
+	"side":    "t.side",
+	"qty":     "t.qty",
+	"price":   "t.price",
+	"total":   "(t.qty * t.price)",
+	"fee":     "t.fee",
+	"account": "t.account_id",
+}
+
+// parseTxCursorValue decodes a string-encoded sort value (as produced
+// by FormatTxCursorValue / emitted by the API layer) back into the Go
+// type SQLite expects for the ORDER BY column.
+func parseTxCursorValue(sort, s string) (any, error) {
+	switch sort {
+	case "symbol", "side":
+		return s, nil
+	case "qty", "price", "total", "fee":
+		return strconv.ParseFloat(s, 64)
+	case "account":
+		return strconv.ParseInt(s, 10, 64)
+	default: // "date"
+		ns, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return time.Unix(0, ns).UTC(), nil
+	}
+}
+
+// FormatTxCursorValue produces the opaque string carried in an
+// X-Next-Cursor header for the given row + sort key. Inverse of
+// parseTxCursorValue.
+func FormatTxCursorValue(t *domain.Transaction, sort string) string {
+	switch sort {
+	case "symbol":
+		return t.AssetSymbol
+	case "side":
+		return string(t.Side)
+	case "qty":
+		return strconv.FormatFloat(t.Qty, 'f', -1, 64)
+	case "price":
+		return strconv.FormatFloat(t.Price, 'f', -1, 64)
+	case "total":
+		return strconv.FormatFloat(t.Qty*t.Price, 'f', -1, 64)
+	case "fee":
+		return strconv.FormatFloat(t.Fee, 'f', -1, 64)
+	case "account":
+		return strconv.FormatInt(t.AccountID, 10)
+	default: // "date"
+		return strconv.FormatInt(t.OccurredAt.UTC().UnixNano(), 10)
+	}
 }
 
 // CreateTransaction inserts the given transaction and populates its ID +
@@ -121,13 +186,33 @@ func (db *DB) ListTransactions(ctx context.Context, f TxFilter) ([]*domain.Trans
 			conds = append(conds, "1 = 0")
 		}
 	}
-	// Keyset cursor — only applied when both fields are set. The
-	// tuple comparison keeps us aligned with the ORDER BY so rows on
-	// the boundary day don't get skipped or duplicated.
-	if !f.CursorOccurredAt.IsZero() && f.CursorID != 0 {
+	// Resolve sort + order with safe fallbacks.
+	sortKey := f.Sort
+	if _, ok := txSortColumns[sortKey]; !ok {
+		sortKey = "date"
+	}
+	order := strings.ToLower(f.Order)
+	if order != "asc" {
+		order = "desc"
+	}
+	sortCol := txSortColumns[sortKey]
+
+	// Keyset cursor — only applied when it was emitted for the same
+	// sort we're running now (otherwise we'd compare values from a
+	// different column). CursorID is the tiebreaker.
+	if f.CursorSort == sortKey && f.CursorID != 0 && f.CursorSortVal != "" {
+		val, err := parseTxCursorValue(sortKey, f.CursorSortVal)
+		if err != nil {
+			return nil, fmt.Errorf("cursor: %w", err)
+		}
+		cmp := "<"
+		if order == "asc" {
+			cmp = ">"
+		}
 		conds = append(conds,
-			"(t.occurred_at < ? OR (t.occurred_at = ? AND t.id < ?))")
-		args = append(args, f.CursorOccurredAt, f.CursorOccurredAt, f.CursorID)
+			fmt.Sprintf("(%s %s ? OR (%s = ? AND t.id %s ?))",
+				sortCol, cmp, sortCol, cmp))
+		args = append(args, val, val, f.CursorID)
 	}
 
 	q := `SELECT t.id, t.user_id, t.account_id, t.asset_symbol, t.side, t.qty, t.price, t.fee,
@@ -136,7 +221,7 @@ func (db *DB) ListTransactions(ctx context.Context, f TxFilter) ([]*domain.Trans
 	if len(conds) > 0 {
 		q += " WHERE " + strings.Join(conds, " AND ")
 	}
-	q += " ORDER BY t.occurred_at DESC, t.id DESC"
+	q += fmt.Sprintf(" ORDER BY %s %s, t.id %s", sortCol, order, order)
 	if f.Limit > 0 {
 		q += fmt.Sprintf(" LIMIT %d", f.Limit)
 	}

@@ -87,13 +87,17 @@ export const api = {
   // transactionsPage is the paginated variant: returns {items, nextCursor}.
   // The server echoes X-Next-Cursor via response header so the body
   // stays a plain array (keeps ptagent and the GET-all helper working).
-  transactionsPage: async ({ q = '', side = '', symbol = '', cursor = '', limit = 50 } = {}) => {
+  transactionsPage: async ({ q = '', side = '', symbol = '', accountId = 0,
+                             sort = '', order = '', cursor = '', limit = 50 } = {}) => {
     const params = new URLSearchParams();
-    if (limit)  params.set('limit', limit);
-    if (cursor) params.set('cursor', cursor);
-    if (q)      params.set('q', q);
-    if (side)   params.set('side', side);
-    if (symbol) params.set('symbol', symbol);
+    if (limit)     params.set('limit', limit);
+    if (cursor)    params.set('cursor', cursor);
+    if (q)         params.set('q', q);
+    if (side)      params.set('side', side);
+    if (symbol)    params.set('symbol', symbol);
+    if (accountId) params.set('account_id', accountId);
+    if (sort)      params.set('sort', sort);
+    if (order)     params.set('order', order);
     const csrf = readCookie(CSRF_COOKIE);
     const headers = { Accept: 'application/json' };
     if (csrf) headers[CSRF_HEADER] = csrf;

@@ -72,13 +72,20 @@ func listTransactionsHandler(d *db.DB) http.HandlerFunc {
 				f.Limit = n
 			}
 		}
+		if v := q.Get("sort"); v != "" {
+			f.Sort = v
+		}
+		if v := q.Get("order"); v != "" {
+			f.Order = v
+		}
 		if v := q.Get("cursor"); v != "" {
-			at, id, err := decodeTxCursor(v)
+			sort, sortVal, id, err := decodeTxCursor(v)
 			if err != nil {
 				writeError(w, http.StatusBadRequest, "invalid cursor")
 				return
 			}
-			f.CursorOccurredAt = at
+			f.CursorSort = sort
+			f.CursorSortVal = sortVal
 			f.CursorID = id
 		}
 
@@ -93,38 +100,39 @@ func listTransactionsHandler(d *db.DB) http.HandlerFunc {
 		// fewer rows came back than requested, we're at the end.
 		if f.Limit > 0 && len(txs) == f.Limit {
 			last := txs[len(txs)-1]
-			w.Header().Set("X-Next-Cursor", encodeTxCursor(last.OccurredAt, last.ID))
+			sortKey := f.Sort
+			if sortKey == "" {
+				sortKey = "date"
+			}
+			w.Header().Set("X-Next-Cursor",
+				encodeTxCursor(sortKey, db.FormatTxCursorValue(last, sortKey), last.ID))
 		}
 		writeJSON(w, http.StatusOK, txs)
 	}
 }
 
-// encodeTxCursor packs (occurred_at, id) into an opaque base64 token
-// of the form "<unix_nano>|<id>". Clients are expected to treat it as
-// a blob and echo it back verbatim.
-func encodeTxCursor(at time.Time, id int64) string {
-	raw := fmt.Sprintf("%d|%d", at.UTC().UnixNano(), id)
+// encodeTxCursor packs (sort, sortValue, id) into an opaque base64
+// token of the form "<sort>|<sortvalue>|<id>". Clients are expected
+// to treat it as a blob and echo it back verbatim.
+func encodeTxCursor(sort, sortVal string, id int64) string {
+	raw := fmt.Sprintf("%s|%s|%d", sort, sortVal, id)
 	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }
 
-func decodeTxCursor(s string) (time.Time, int64, error) {
-	b, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil {
-		return time.Time{}, 0, err
+func decodeTxCursor(s string) (sort string, sortVal string, id int64, err error) {
+	b, derr := base64.RawURLEncoding.DecodeString(s)
+	if derr != nil {
+		return "", "", 0, derr
 	}
-	parts := strings.SplitN(string(b), "|", 2)
-	if len(parts) != 2 {
-		return time.Time{}, 0, fmt.Errorf("cursor: bad format")
+	parts := strings.SplitN(string(b), "|", 3)
+	if len(parts) != 3 {
+		return "", "", 0, fmt.Errorf("cursor: bad format")
 	}
-	ns, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return time.Time{}, 0, err
+	idV, perr := strconv.ParseInt(parts[2], 10, 64)
+	if perr != nil {
+		return "", "", 0, perr
 	}
-	id, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return time.Time{}, 0, err
-	}
-	return time.Unix(0, ns).UTC(), id, nil
+	return parts[0], parts[1], idV, nil
 }
 
 func createTransactionHandler(d *db.DB) http.HandlerFunc {
