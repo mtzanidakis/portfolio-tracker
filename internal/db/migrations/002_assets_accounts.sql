@@ -19,7 +19,7 @@ CREATE TABLE assets (
         CHECK (type IN ('stock','etf','crypto','cash')),
     currency    TEXT NOT NULL
         CHECK (currency IN ('USD','EUR','GBP','JPY','CHF','CAD','AUD')),
-    color       TEXT NOT NULL DEFAULT '',
     provider    TEXT NOT NULL DEFAULT '',
-    provider_id TEXT NOT NULL DEFAULT ''
+    provider_id TEXT NOT NULL DEFAULT '',
+    logo_url    TEXT NOT NULL DEFAULT ''
 );

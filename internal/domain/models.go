@@ -49,7 +49,6 @@ type Asset struct {
 	Name       string    `json:"name"`
 	Type       AssetType `json:"type"`
 	Currency   Currency  `json:"currency"`
-	Color      string    `json:"color"`
 	Provider   string    `json:"provider"`
 	ProviderID string    `json:"provider_id"`
 	LogoURL    string    `json:"logo_url"`

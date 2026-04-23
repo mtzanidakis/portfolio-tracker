@@ -13,7 +13,7 @@ func TestAssetUpsertAndGet(t *testing.T) {
 
 	a := &domain.Asset{
 		Symbol: "AAPL", Name: "Apple", Type: domain.AssetStock,
-		Currency: domain.USD, Color: "#d4953d",
+		Currency: domain.USD,
 		Provider: "yahoo", ProviderID: "AAPL",
 	}
 	if err := db.UpsertAsset(ctx, a); err != nil {

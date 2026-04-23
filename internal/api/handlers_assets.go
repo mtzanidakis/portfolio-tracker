@@ -47,7 +47,6 @@ type assetRequest struct {
 	Name       string           `json:"name"`
 	Type       domain.AssetType `json:"type"`
 	Currency   domain.Currency  `json:"currency"`
-	Color      string           `json:"color"`
 	Provider   string           `json:"provider"`
 	ProviderID string           `json:"provider_id"`
 	LogoURL    string           `json:"logo_url"`
@@ -77,7 +76,6 @@ func upsertAssetHandler(d *db.DB) http.HandlerFunc {
 			Name:       req.Name,
 			Type:       req.Type,
 			Currency:   req.Currency,
-			Color:      req.Color,
 			Provider:   req.Provider,
 			ProviderID: req.ProviderID,
 			LogoURL:    req.LogoURL,
