@@ -26,16 +26,30 @@ export function AccountsPage() {
 
   if (err) return <div class="empty">Error: {err}</div>;
 
-  // Per-account stats: count + net invested (buys − sells, in the
-  // account's currency, at book value — not current market price).
+  // Per-account stats computed in the account's currency at book value.
+  // Trades and cash operations live on separate ledgers: the same card
+  // can show both when an account hosts a mix (e.g., a brokerage that
+  // also holds idle cash).
+  //   invested    = buy(qty*price + fee) − sell(qty*price)
+  //   cashBalance = deposit + interest − withdraw
   const statsFor = (accountId) => {
     const txs = transactions.filter(t => t.account_id === accountId);
-    const invested = txs.reduce((s, t) => {
-      const sign = t.side === 'buy' ? 1 : -1;
-      const fee = t.side === 'buy' ? (t.fee || 0) : 0;
-      return s + sign * (t.qty * t.price) + fee;
-    }, 0);
-    return { count: txs.length, invested };
+    let invested = 0;
+    let cashBalance = 0;
+    let hasTrade = false;
+    let hasCash = false;
+    for (const t of txs) {
+      const gross = t.qty * t.price;
+      const fee = t.fee || 0;
+      switch (t.side) {
+        case 'buy':      invested += gross + fee; hasTrade = true; break;
+        case 'sell':     invested -= gross;       hasTrade = true; break;
+        case 'deposit':
+        case 'interest': cashBalance += gross;    hasCash = true;  break;
+        case 'withdraw': cashBalance -= gross;    hasCash = true;  break;
+      }
+    }
+    return { count: txs.length, invested, cashBalance, hasTrade, hasCash };
   };
 
   const handleDelete = async (acc) => {
@@ -52,7 +66,7 @@ export function AccountsPage() {
     <>
       <div class="acc-grid">
         {accounts.map(a => {
-          const { count, invested } = statsFor(a.id);
+          const { count, invested, cashBalance, hasTrade, hasCash } = statsFor(a.id);
           return (
             <div key={a.id} class="acc-card">
               <div class="acc-head" style={{ position: 'relative' }}>
@@ -78,10 +92,24 @@ export function AccountsPage() {
                 )}
               </div>
 
-              <div>
-                <div class="stat-label">Net invested · {a.currency}</div>
-                <div class="acc-value">{fmtMoney(invested, a.currency)}</div>
-              </div>
+              {hasCash && (
+                <div>
+                  <div class="stat-label">Cash balance · {a.currency}</div>
+                  <div class="acc-value">{fmtMoney(cashBalance, a.currency)}</div>
+                </div>
+              )}
+              {hasTrade && (
+                <div>
+                  <div class="stat-label">Net invested · {a.currency}</div>
+                  <div class="acc-value">{fmtMoney(invested, a.currency)}</div>
+                </div>
+              )}
+              {!hasCash && !hasTrade && (
+                <div>
+                  <div class="stat-label">Net invested · {a.currency}</div>
+                  <div class="acc-value">{fmtMoney(0, a.currency)}</div>
+                </div>
+              )}
 
               <div class="acc-footer">
                 <span>{count} transaction{count === 1 ? '' : 's'}</span>
