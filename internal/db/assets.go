@@ -84,7 +84,9 @@ func (db *DB) ListAssets(ctx context.Context) ([]*domain.Asset, error) {
 	return out, rows.Err()
 }
 
-// DeleteAsset removes an asset. Fails if transactions reference it.
+// DeleteAsset removes an asset. The FK on transactions.asset_symbol
+// cascades, so every transaction referencing the asset is wiped in the
+// same statement — callers that display activity should re-fetch.
 func (db *DB) DeleteAsset(ctx context.Context, symbol string) error {
 	res, err := db.ExecContext(ctx, `DELETE FROM assets WHERE symbol = ?`, symbol)
 	if err != nil {

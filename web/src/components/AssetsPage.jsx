@@ -28,7 +28,7 @@ export function AssetsPage() {
   );
 
   const handleDelete = async (asset) => {
-    if (!confirm(`Delete "${asset.symbol}"? Assets referenced by transactions cannot be deleted.`)) return;
+    if (!confirm(`Delete "${asset.symbol}"? All transactions for this asset will be removed as well.`)) return;
     try {
       await api.deleteAsset(asset.symbol);
       load();
