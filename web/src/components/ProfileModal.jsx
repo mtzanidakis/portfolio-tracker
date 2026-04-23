@@ -4,8 +4,13 @@ import { api } from '../api.js';
 
 const MIN_PW = 8;
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD'];
+const AESTHETICS = [
+  { id: 'technical', label: 'Technical', sub: 'Slate + electric blue' },
+  { id: 'editorial', label: 'Editorial', sub: 'Neutral paper + red' },
+  { id: 'forest',    label: 'Forest',    sub: 'Cool green + slate' },
+];
 
-export function ProfileModal({ user, onClose, onSaved }) {
+export function ProfileModal({ user, aesthetic, setAesthetic, onClose, onSaved }) {
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [baseCur, setBaseCur] = useState(user.base_currency);
@@ -101,6 +106,29 @@ export function ProfileModal({ user, onClose, onSaved }) {
             </button>
           </div>
         </form>
+
+        <div style={{ height: 1, background: 'var(--border)', margin: '16px 0' }} />
+
+        <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>Aesthetic</h3>
+        <div style={{ display: 'grid', gap: 6, marginBottom: 18 }}>
+          {AESTHETICS.map(opt => (
+            <button key={opt.id} type="button" onClick={() => setAesthetic(opt.id)}
+              style={{
+                textAlign: 'left', padding: '8px 10px',
+                border: `1px solid ${aesthetic === opt.id ? 'var(--terra)' : 'var(--border)'}`,
+                background: aesthetic === opt.id ? 'var(--terra-wash)' : 'var(--bg-sunken)',
+                borderRadius: 'var(--radius-sm)',
+                color: aesthetic === opt.id ? 'var(--terra)' : 'var(--text)',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{opt.label}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{opt.sub}</div>
+              </div>
+              {aesthetic === opt.id && <Icon name="check" size={14} />}
+            </button>
+          ))}
+        </div>
 
         <div style={{ height: 1, background: 'var(--border)', margin: '16px 0' }} />
 

@@ -881,44 +881,6 @@ html[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,0.55); }
 
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
-/* ====== Tweaks ====== */
-.tweaks-panel {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: 16px 18px;
-  width: 260px;
-  z-index: 200;
-  display: none;
-}
-.tweaks-panel.on { display: block; }
-.tweaks-title { font-family: var(--font-serif); font-size: 16px; margin: 0 0 12px; }
-.tweak-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 13px; }
-.switch {
-  width: 34px; height: 20px;
-  background: var(--bg-sunken);
-  border-radius: 999px;
-  position: relative;
-  transition: background 160ms;
-  border: 1px solid var(--border);
-}
-.switch::after {
-  content: "";
-  position: absolute;
-  left: 2px; top: 1px;
-  width: 16px; height: 16px;
-  border-radius: 50%;
-  background: var(--bg-elev);
-  box-shadow: var(--shadow-sm);
-  transition: left 160ms;
-}
-.switch.on { background: var(--terra); border-color: var(--terra); }
-.switch.on::after { left: 15px; background: white; }
-
 /* Privacy mask */
 .masked {
   display: inline-block;
@@ -1108,14 +1070,6 @@ html[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,0.55); }
    * their card so wide content (Activities, Assets) is reachable. */
   .card:has(> .table) { overflow-x: auto; }
   .card > .table { min-width: 640px; }
-
-  /* Tweaks panel takes up more screen real estate. */
-  .tweaks-panel {
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
-    width: auto;
-  }
 }
 
 @media (max-width: 520px) {

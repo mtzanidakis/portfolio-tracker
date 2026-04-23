@@ -28,7 +28,6 @@ export function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAddTx, setShowAddTx] = useState(false);
-  const [tweaksOpen, setTweaksOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [tokensOpen, setTokensOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -80,9 +79,6 @@ export function App() {
         onClick={() => setTheme(appliedTheme === 'dark' ? 'light' : 'dark')}>
         <Icon name={appliedTheme === 'dark' ? 'sun' : 'moon'} />
       </button>
-      <button class="icon-btn" onClick={() => setTweaksOpen(o => !o)}>
-        <Icon name="bell" />
-      </button>
       <button class="btn primary btn-add-tx" onClick={() => setShowAddTx(true)}
         aria-label="Add transaction" title="Add transaction">
         <Icon name="plus" />
@@ -123,57 +119,14 @@ export function App() {
       )}
       {profileOpen && (
         <ProfileModal user={user}
+          aesthetic={aesthetic}
+          setAesthetic={setAesthetic}
           onSaved={(u) => setUser(u)}
           onClose={() => setProfileOpen(false)} />
       )}
       {tokensOpen && (
         <TokensModal onClose={() => setTokensOpen(false)} />
       )}
-
-      <div class={`tweaks-panel ${tweaksOpen ? 'on' : ''}`}>
-        <h3 class="tweaks-title">Tweaks</h3>
-
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Aesthetic</div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {[
-              { id: 'technical', label: 'Technical', sub: 'Slate + electric blue' },
-              { id: 'editorial', label: 'Editorial', sub: 'Neutral paper + red' },
-              { id: 'forest',    label: 'Forest',    sub: 'Cool green + slate' },
-            ].map(opt => (
-              <button key={opt.id} onClick={() => setAesthetic(opt.id)}
-                style={{
-                  textAlign: 'left', padding: '8px 10px',
-                  border: `1px solid ${aesthetic === opt.id ? 'var(--terra)' : 'var(--border)'}`,
-                  background: aesthetic === opt.id ? 'var(--terra-wash)' : 'var(--bg-sunken)',
-                  borderRadius: 'var(--radius-sm)',
-                  color: aesthetic === opt.id ? 'var(--terra)' : 'var(--text)',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{opt.label}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{opt.sub}</div>
-                </div>
-                {aesthetic === opt.id && <Icon name="check" size={14} />}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div class="tweak-row">
-          <span>Theme</span>
-          <div class="timeframe">
-            {['light', 'dark', 'system'].map(m => (
-              <button key={m} class={theme === m ? 'active' : ''} onClick={() => setTheme(m)}>{m}</button>
-            ))}
-          </div>
-        </div>
-
-        <div class="tweak-row">
-          <span>Privacy mode</span>
-          <button class={`switch ${privacy ? 'on' : ''}`} onClick={() => setPrivacy(p => !p)} />
-        </div>
-      </div>
     </div>
   );
 }
