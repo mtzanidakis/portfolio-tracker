@@ -34,6 +34,21 @@ export function AssetModal({ asset, onClose, onSaved }) {
   // keeps a unique key without asking the user for one.
   const isCash = type === 'cash';
 
+  // When the user picks a different asset type, snap the provider to
+  // the one that actually serves prices for it — CoinGecko for crypto,
+  // Yahoo for stocks/ETFs. The first render is skipped so editing an
+  // existing row doesn't rewrite the stored provider behind the user's
+  // back. Cash rows keep the empty provider the submit handler sends.
+  const typeFirstRun = useRef(true);
+  useEffect(() => {
+    if (typeFirstRun.current) {
+      typeFirstRun.current = false;
+      return;
+    }
+    if (type === 'crypto' && provider !== 'coingecko') setProvider('coingecko');
+    else if ((type === 'stock' || type === 'etf') && provider !== 'yahoo') setProvider('yahoo');
+  }, [type]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Debounced provider lookup: whenever symbol or provider changes the
   // form re-queries and auto-fills name / currency / type / provider-id
   // / logo_url. On mount for an existing asset we suppress the initial
