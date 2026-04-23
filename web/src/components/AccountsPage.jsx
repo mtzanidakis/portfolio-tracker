@@ -8,6 +8,10 @@ import { api } from '../api.js';
 export function AccountsPage() {
   const [accounts, setAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  // `holdings` is the cross-account aggregate from /api/v1/holdings,
+  // keyed by symbol. We use each holding's per-unit native price
+  // (ValueNative / Qty) to price the per-account open position.
+  const [holdings, setHoldings] = useState([]);
   const [err, setErr] = useState(null);
   const [modalAccount, setModalAccount] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -15,14 +19,29 @@ export function AccountsPage() {
 
   const load = async () => {
     try {
-      const [accs, txs] = await Promise.all([api.accounts(), api.transactions()]);
+      const [accs, txs, h] = await Promise.all([
+        api.accounts(), api.transactions(), api.holdings(),
+      ]);
       setAccounts(accs || []);
       setTransactions(txs || []);
+      setHoldings(h || []);
     } catch (e) {
       setErr(e.message);
     }
   };
   useEffect(() => { load(); }, []);
+
+  // Per-unit native-currency price for each symbol — derived from the
+  // aggregate holdings so we don't need a second prices endpoint.
+  // `PriceStale` propagates so the card can signal a '?' when the
+  // refresher hasn't populated prices yet.
+  const priceMap = Object.fromEntries((holdings || []).map(h => [
+    h.Symbol,
+    {
+      price: h.Qty > 0 ? (h.ValueNative / h.Qty) : 0,
+      stale: !!h.PriceStale,
+    },
+  ]));
 
   if (err) return <div class="empty">Error: {err}</div>;
 
@@ -79,8 +98,28 @@ export function AccountsPage() {
       }
     }
     let openCost = 0;
-    for (const { cost } of state.values()) openCost += cost;
-    return { count: txs.length, openCost, realized, cashBalance, hasTrade, hasCash };
+    let openValue = 0;
+    let valueStale = false;
+    let hasOpen = false;
+    for (const [sym, { qty, cost }] of state.entries()) {
+      openCost += cost;
+      if (qty > 0) {
+        hasOpen = true;
+        const p = priceMap[sym];
+        if (!p || p.stale || !p.price) {
+          valueStale = true;
+          openValue += cost; // fall back to cost so the card still totals
+        } else {
+          openValue += qty * p.price;
+        }
+      }
+    }
+    const unrealized = hasOpen ? openValue - openCost : 0;
+    return {
+      count: txs.length,
+      openCost, openValue, unrealized, valueStale, hasOpen,
+      realized, cashBalance, hasTrade, hasCash,
+    };
   };
 
   const handleDelete = async (acc) => {
@@ -97,7 +136,10 @@ export function AccountsPage() {
     <>
       <div class="acc-grid">
         {accounts.map(a => {
-          const { count, openCost, realized, cashBalance, hasTrade, hasCash } = statsFor(a.id);
+          const {
+            count, openCost, openValue, unrealized, valueStale, hasOpen,
+            realized, cashBalance, hasTrade, hasCash,
+          } = statsFor(a.id);
           return (
             <div key={a.id} class="acc-card">
               <div class="acc-head" style={{ position: 'relative' }}>
@@ -129,10 +171,44 @@ export function AccountsPage() {
                   <div class="acc-value">{fmtMoney(cashBalance, a.currency)}</div>
                 </div>
               )}
-              {hasTrade && (
+              {hasTrade && hasOpen && (() => {
+                const unrealPct = openCost > 0 ? (unrealized / openCost) * 100 : 0;
+                const unrealColor = unrealized >= 0 ? 'var(--pos)' : 'var(--neg)';
+                return (
+                  <div>
+                    <div class="stat-label">
+                      Current value · {a.currency}
+                      {valueStale && (
+                        <span title="Price data missing; falling back to cost"
+                          style={{ marginLeft: 6, color: 'var(--neg)' }}>⚠</span>
+                      )}
+                    </div>
+                    <div class="acc-value">{fmtMoney(openValue, a.currency)}</div>
+                    <div style={{
+                      fontSize: 12, fontFamily: 'var(--font-mono)', marginTop: 4,
+                      color: 'var(--text-muted)',
+                    }}>
+                      Cost {fmtMoney(openCost, a.currency)}
+                      {' · '}
+                      <span style={{ color: unrealColor }}>
+                        {fmtMoney(unrealized, a.currency, { sign: true })} ({unrealPct.toFixed(2)}%)
+                      </span>
+                    </div>
+                    {realized !== 0 && (
+                      <div style={{
+                        fontSize: 12, fontFamily: 'var(--font-mono)', marginTop: 2,
+                        color: realized >= 0 ? 'var(--pos)' : 'var(--neg)',
+                      }}>
+                        Realized {fmtMoney(realized, a.currency, { sign: true })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              {hasTrade && !hasOpen && (
                 <div>
                   <div class="stat-label">Cost basis · {a.currency}</div>
-                  <div class="acc-value">{fmtMoney(openCost, a.currency)}</div>
+                  <div class="acc-value">{fmtMoney(0, a.currency)}</div>
                   {realized !== 0 && (
                     <div style={{
                       fontSize: 12, fontFamily: 'var(--font-mono)', marginTop: 4,
