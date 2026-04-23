@@ -1024,18 +1024,29 @@ html[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,0.55); }
     padding: 14px 16px;
     gap: 12px;
   }
-  .page-title { font-size: 20px; }
   .page-sub { display: none; }
 
   .top-actions { flex-wrap: nowrap; gap: 6px; }
   /* On mobile the Add-transaction primary button shrinks to just the
    * plus icon so the topbar doesn't wrap onto two rows. */
-  .top-actions .btn.primary {
-    padding: 8px 10px;
+  .btn-add-tx .label { display: none; }
+  .btn-add-tx {
+    padding: 0;
+    width: 34px; height: 34px;
+    display: grid;
+    place-items: center;
+    gap: 0;
   }
-  .top-actions .btn.primary svg { margin: 0; }
-  .top-actions .btn.primary span,
-  .top-actions .btn.primary { white-space: nowrap; }
+
+  /* Give the title group room to shrink + truncate; without this the
+   * h1 can push the action icons off-screen at narrow widths. */
+  .topbar > div:first-child { flex: 1; min-width: 0; }
+  .page-title {
+    font-size: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
   .content {
     padding: 18px 14px 56px;

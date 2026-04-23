@@ -83,8 +83,10 @@ export function App() {
       <button class="icon-btn" onClick={() => setTweaksOpen(o => !o)}>
         <Icon name="bell" />
       </button>
-      <button class="btn primary" onClick={() => setShowAddTx(true)}>
-        <Icon name="plus" /> Add transaction
+      <button class="btn primary btn-add-tx" onClick={() => setShowAddTx(true)}
+        aria-label="Add transaction" title="Add transaction">
+        <Icon name="plus" />
+        <span class="label">Add transaction</span>
       </button>
     </>
   );
