@@ -79,6 +79,7 @@ export const api = {
   assets:        (q='') => request('GET',    '/api/v1/assets' + (q ? '?q=' + encodeURIComponent(q) : '')),
   upsertAsset:   (p)    => request('POST',   '/api/v1/assets', p),
   deleteAsset:   (sym)  => request('DELETE', `/api/v1/assets/${encodeURIComponent(sym)}`),
+  assetPrice:    (sym)  => request('GET',    `/api/v1/assets/${encodeURIComponent(sym)}/price`),
   lookupAsset:   (symbol, provider='yahoo') =>
     request('GET', '/api/v1/assets/lookup?symbol=' + encodeURIComponent(symbol) +
       '&provider=' + encodeURIComponent(provider)),

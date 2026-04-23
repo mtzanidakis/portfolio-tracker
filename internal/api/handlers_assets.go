@@ -183,6 +183,53 @@ func lookupAssetHandler(yahoo, coingecko prices.SymbolLookup) http.HandlerFunc {
 	}
 }
 
+type assetPriceResponse struct {
+	Symbol   string  `json:"symbol"`
+	Price    float64 `json:"price"`
+	Currency string  `json:"currency"`
+	At       string  `json:"at,omitempty"`
+	Stale    bool    `json:"stale"`
+}
+
+// assetPriceHandler returns the latest known price for a single asset
+// regardless of whether the caller holds any of it — used by the
+// asset-details modal so a zero-qty or zero-tx asset still shows its
+// current market price. Cash assets are always 1.0 in their own
+// currency. Unknown prices come back as {stale:true, price:0}.
+func assetPriceHandler(d *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sym := strings.TrimSpace(r.PathValue("symbol"))
+		if sym == "" {
+			http.NotFound(w, r)
+			return
+		}
+		asset, err := d.GetAsset(r.Context(), sym)
+		if err != nil {
+			writeDBError(w, err)
+			return
+		}
+		resp := assetPriceResponse{Symbol: sym, Currency: string(asset.Currency)}
+		if asset.Type == domain.AssetCash {
+			resp.Price = 1.0
+			writeJSON(w, http.StatusOK, resp)
+			return
+		}
+		p, err := d.GetLatestPrice(r.Context(), sym)
+		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				resp.Stale = true
+				writeJSON(w, http.StatusOK, resp)
+				return
+			}
+			writeDBError(w, err)
+			return
+		}
+		resp.Price = p.Price
+		resp.At = p.FetchedAt.Format(time.RFC3339)
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
 func deleteAssetHandler(d *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := d.DeleteAsset(r.Context(), r.PathValue("symbol")); err != nil {

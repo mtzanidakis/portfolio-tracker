@@ -11,7 +11,7 @@ import { api } from '../api.js';
 // pinned in the filter. Data is loaded fresh on open — small payloads
 // relative to the full asset page, and keeps the modal self-contained.
 export function AssetDetailsModal({ asset, onClose, onShowActivities }) {
-  const [holding, setHolding] = useState(null);
+  const [priceInfo, setPriceInfo] = useState(null);
   const [txs, setTxs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
@@ -20,12 +20,12 @@ export function AssetDetailsModal({ asset, onClose, onShowActivities }) {
     let cancelled = false;
     (async () => {
       try {
-        const [hs, ts] = await Promise.all([
-          api.holdings(),
+        const [p, ts] = await Promise.all([
+          api.assetPrice(asset.symbol),
           api.transactions('?symbol=' + encodeURIComponent(asset.symbol)),
         ]);
         if (cancelled) return;
-        setHolding((hs || []).find(h => h.Symbol === asset.symbol) || null);
+        setPriceInfo(p);
         setTxs(ts || []);
       } catch (e) {
         if (!cancelled) setErr(e.message);
@@ -50,37 +50,40 @@ export function AssetDetailsModal({ asset, onClose, onShowActivities }) {
   const minBuy = buyPrices.length ? Math.min(...buyPrices) : null;
   const maxBuy = buyPrices.length ? Math.max(...buyPrices) : null;
 
-  // Replay in chronological order for realised PnL (native currency).
+  // Replay chronologically for running qty + cost (used for current
+  // value and unrealized PnL) and for realised PnL on sells.
   let realized = 0;
+  let openQty = 0;
+  let openCost = 0;
   {
     const sorted = [...txs].sort((a, b) => {
       const da = new Date(a.occurred_at).getTime();
       const db = new Date(b.occurred_at).getTime();
       return da !== db ? da - db : (a.id || 0) - (b.id || 0);
     });
-    let qty = 0, cost = 0;
     for (const t of sorted) {
       if (t.side === 'buy') {
-        qty += t.qty;
-        cost += t.qty * t.price + (t.fee || 0);
+        openQty += t.qty;
+        openCost += t.qty * t.price + (t.fee || 0);
       } else if (t.side === 'sell') {
-        const avg = qty > 0 ? cost / qty : 0;
+        const avg = openQty > 0 ? openCost / openQty : 0;
         const proceeds = t.qty * t.price - (t.fee || 0);
         const costRemoved = avg * t.qty;
         realized += proceeds - costRemoved;
-        qty -= t.qty;
-        cost -= costRemoved;
+        openQty -= t.qty;
+        openCost -= costRemoved;
+        if (openQty < 1e-9) { openQty = 0; openCost = 0; }
       }
     }
   }
 
-  const currentPrice  = holding?.CurrentPrice || 0;
-  const currentQty    = holding?.Qty          || 0;
-  const currentValue  = holding?.ValueNative  || 0;
-  const unrealized    = holding ? holding.ValueNative - holding.CostNative : 0;
-  const totalPnL      = unrealized + realized;
-  const pnlPct        = investmentSum > 0 ? (totalPnL / investmentSum) * 100 : 0;
-  const priceStale    = !!holding?.PriceStale;
+  const priceStale   = !priceInfo || priceInfo.stale;
+  const currentPrice = priceInfo?.price || 0;
+  const currentQty   = openQty;
+  const currentValue = currentQty * currentPrice;
+  const unrealized   = currentQty > 0 ? currentValue - openCost : 0;
+  const totalPnL     = unrealized + realized;
+  const pnlPct       = investmentSum > 0 ? (totalPnL / investmentSum) * 100 : 0;
 
   const Stat = ({ label, value, sub, color }) => (
     <div style={{ padding: '10px 0' }}>

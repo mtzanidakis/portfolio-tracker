@@ -93,6 +93,7 @@ func NewRouter(d *db.DB, sessionLifetime time.Duration, opts ...Option) *http.Se
 	mux.Handle("GET /api/v1/assets/lookup", protect(lookupAssetHandler(cfg.lookupYahoo, cfg.lookupCoinGko)))
 	mux.Handle("GET /api/v1/assets/{symbol}", protect(getAssetHandler(d)))
 	mux.Handle("GET /api/v1/assets/{symbol}/logo", protect(assetLogoHandler(d, nil)))
+	mux.Handle("GET /api/v1/assets/{symbol}/price", protect(assetPriceHandler(d)))
 	mux.Handle("DELETE /api/v1/assets/{symbol}", protect(deleteAssetHandler(d)))
 
 	mux.Handle("GET /api/v1/transactions", protect(listTransactionsHandler(d)))
