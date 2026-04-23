@@ -1,8 +1,11 @@
 package api
 
 import (
+	"encoding/base64"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mtzanidakis/portfolio-tracker/internal/auth"
@@ -37,7 +40,22 @@ func listTransactionsHandler(d *db.DB) http.HandlerFunc {
 			f.AssetSymbol = v
 		}
 		if v := q.Get("side"); v != "" {
-			f.Side = domain.TxSide(v)
+			// Comma-separated → multi-side IN filter (UI group tabs).
+			// Single value → stays on the backward-compat Side field so
+			// ptagent's --side flag keeps working untouched.
+			if strings.Contains(v, ",") {
+				for s := range strings.SplitSeq(v, ",") {
+					s = strings.TrimSpace(s)
+					if s != "" {
+						f.Sides = append(f.Sides, domain.TxSide(s))
+					}
+				}
+			} else {
+				f.Side = domain.TxSide(v)
+			}
+		}
+		if v := q.Get("q"); v != "" {
+			f.Q = strings.TrimSpace(v)
 		}
 		if v := q.Get("from"); v != "" {
 			if t, err := time.Parse(time.RFC3339, v); err == nil {
@@ -54,13 +72,59 @@ func listTransactionsHandler(d *db.DB) http.HandlerFunc {
 				f.Limit = n
 			}
 		}
+		if v := q.Get("cursor"); v != "" {
+			at, id, err := decodeTxCursor(v)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid cursor")
+				return
+			}
+			f.CursorOccurredAt = at
+			f.CursorID = id
+		}
+
 		txs, err := d.ListTransactions(r.Context(), f)
 		if err != nil {
 			writeDBError(w, err)
 			return
 		}
+		// Emit the next-page cursor as a header so the response body
+		// stays a plain array (keeps ptagent + any other array-shaped
+		// consumer working). Only set when we filled the page — if
+		// fewer rows came back than requested, we're at the end.
+		if f.Limit > 0 && len(txs) == f.Limit {
+			last := txs[len(txs)-1]
+			w.Header().Set("X-Next-Cursor", encodeTxCursor(last.OccurredAt, last.ID))
+		}
 		writeJSON(w, http.StatusOK, txs)
 	}
+}
+
+// encodeTxCursor packs (occurred_at, id) into an opaque base64 token
+// of the form "<unix_nano>|<id>". Clients are expected to treat it as
+// a blob and echo it back verbatim.
+func encodeTxCursor(at time.Time, id int64) string {
+	raw := fmt.Sprintf("%d|%d", at.UTC().UnixNano(), id)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+}
+
+func decodeTxCursor(s string) (time.Time, int64, error) {
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return time.Time{}, 0, err
+	}
+	parts := strings.SplitN(string(b), "|", 2)
+	if len(parts) != 2 {
+		return time.Time{}, 0, fmt.Errorf("cursor: bad format")
+	}
+	ns, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return time.Time{}, 0, err
+	}
+	id, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return time.Time{}, 0, err
+	}
+	return time.Unix(0, ns).UTC(), id, nil
 }
 
 func createTransactionHandler(d *db.DB) http.HandlerFunc {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
 import { AssetLogo } from './AssetLogo.jsx';
 import { TxModal } from './TxModal.jsx';
@@ -9,69 +9,137 @@ const SIDE_LABEL = {
   buy: 'Buy', sell: 'Sell',
   deposit: 'Deposit', withdraw: 'Withdraw', interest: 'Interest',
 };
-const TRADE_SIDES = new Set(['buy', 'sell']);
 const CASH_SIDES = new Set(['deposit', 'withdraw', 'interest']);
+
+// Maps the UI tab to the `side=` query param the backend expects.
+// Empty string → no side filter (show everything).
+const FILTER_TO_SIDES = {
+  all:    '',
+  trades: 'buy,sell',
+  cash:   'deposit,withdraw,interest',
+};
+
+const PAGE_SIZE = 50;
+const Q_DEBOUNCE_MS = 300;
 
 export function ActivitiesPage({ privacy, currency, user }) {
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
-  const [rows, setRows] = useState([]);
+  // Items are the paginated slice from the server. `stats` holds the
+  // aggregate totals for the hero — we fetch the whole list once for
+  // those since summing only the current page would be misleading.
+  const [items, setItems] = useState([]);
+  const [cursor, setCursor] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [stats, setStats] = useState(null);
   const [assets, setAssets] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [editTx, setEditTx] = useState(null);
   const [err, setErr] = useState(null);
 
-  async function load() {
+  // Debounce the free-text input so each keystroke doesn't hammer the
+  // backend. The debounced value drives the actual fetch.
+  const [debouncedQ, setDebouncedQ] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(query.trim()), Q_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Assets + accounts are lookup maps that don't change across pages;
+  // the hero stats re-pull on every commit via reloadStats (see below).
+  const loadLookups = async () => {
+    const [a, accs] = await Promise.all([api.assets(), api.accounts()]);
+    setAssets(a || []);
+    setAccounts(accs || []);
+  };
+
+  const reloadStats = async () => {
     try {
-      const [tx, a, accs] = await Promise.all([api.transactions(), api.assets(), api.accounts()]);
-      setRows(tx || []);
-      setAssets(a || []);
-      setAccounts(accs || []);
+      // Unpaginated — used only for the hero. Cheap for the single-user
+      // self-hosted case; swap for a dedicated aggregate endpoint later
+      // if someone ends up with tens of thousands of rows.
+      const all = await api.transactions();
+      setStats(all || []);
     } catch (e) {
       setErr(e.message);
     }
-  }
-  useEffect(() => { load(); }, []);
+  };
+
+  // A request-sequence ref guards against stale responses: filter /
+  // query changes fire overlapping fetches and we only want the
+  // latest one to land.
+  const seq = useRef(0);
+
+  const fetchPage = async ({ cursor = '', reset = false } = {}) => {
+    const mySeq = ++seq.current;
+    if (reset) setLoading(true); else setLoadingMore(true);
+    try {
+      const { items: page, nextCursor } = await api.transactionsPage({
+        q: debouncedQ,
+        side: FILTER_TO_SIDES[filter] || '',
+        cursor,
+        limit: PAGE_SIZE,
+      });
+      if (seq.current !== mySeq) return;
+      setItems(prev => reset ? (page || []) : [...prev, ...(page || [])]);
+      setCursor(nextCursor);
+      setErr(null);
+    } catch (e) {
+      if (seq.current === mySeq) setErr(e.message);
+    } finally {
+      if (seq.current === mySeq) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    }
+  };
+
+  // Initial load: lookup tables + first page + aggregate stats.
+  useEffect(() => {
+    loadLookups();
+    reloadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Any time the filter or debounced query changes, reset to page 1.
+  useEffect(() => {
+    fetchPage({ reset: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, debouncedQ]);
 
   if (err) return <div class="empty">Error: {err}</div>;
 
   const assetMap = Object.fromEntries((assets || []).map(a => [a.symbol, a]));
   const accMap = Object.fromEntries((accounts || []).map(a => [a.id, a]));
-  const q = query.toLowerCase();
 
-  const inFilter = (side) => {
-    switch (filter) {
-      case 'all':    return true;
-      case 'trades': return TRADE_SIDES.has(side);
-      case 'cash':   return CASH_SIDES.has(side);
-      default:       return side === filter;
-    }
-  };
-
-  const filtered = rows.filter(tx =>
-    inFilter(tx.side) &&
-    (q === '' ||
-      tx.asset_symbol.toLowerCase().includes(q) ||
-      (assetMap[tx.asset_symbol]?.name || '').toLowerCase().includes(q))
-  );
-
+  // Aggregate stats derive from the full dataset (stats state), not
+  // the current page — otherwise filtering would change the hero.
+  const allRows = stats || [];
   const inBase = (tx) => tx.qty * tx.price * (tx.fx_to_base || 1);
-  const totalBuys = rows.filter(a => a.side === 'buy').reduce((s, a) => s + inBase(a), 0);
-  const totalSells = rows.filter(a => a.side === 'sell').reduce((s, a) => s + inBase(a), 0);
-  const totalDeposits = rows.filter(a => a.side === 'deposit').reduce((s, a) => s + inBase(a), 0);
-  const totalWithdraws = rows.filter(a => a.side === 'withdraw').reduce((s, a) => s + inBase(a), 0);
-  const totalInterest = rows.filter(a => a.side === 'interest').reduce((s, a) => s + inBase(a), 0);
+  const totalBuys = allRows.filter(a => a.side === 'buy').reduce((s, a) => s + inBase(a), 0);
+  const totalSells = allRows.filter(a => a.side === 'sell').reduce((s, a) => s + inBase(a), 0);
+  const totalDeposits = allRows.filter(a => a.side === 'deposit').reduce((s, a) => s + inBase(a), 0);
+  const totalWithdraws = allRows.filter(a => a.side === 'withdraw').reduce((s, a) => s + inBase(a), 0);
+  const totalInterest = allRows.filter(a => a.side === 'interest').reduce((s, a) => s + inBase(a), 0);
   const cashFlow = totalDeposits + totalInterest - totalWithdraws;
   const hasCashActivity = totalDeposits + totalWithdraws + totalInterest > 0;
+  const buyCount = allRows.filter(a => a.side === 'buy').length;
+  const sellCount = allRows.filter(a => a.side === 'sell').length;
 
   const handleDelete = async (tx) => {
     if (!confirm(`Delete this ${tx.side} of ${tx.qty} ${tx.asset_symbol}?`)) return;
     try {
       await api.deleteTx(tx.id);
-      load();
+      await Promise.all([fetchPage({ reset: true }), reloadStats()]);
     } catch (e) {
       alert(e.message || 'Failed to delete transaction.');
     }
+  };
+
+  const onSavedTx = async () => {
+    setEditTx(null);
+    await Promise.all([fetchPage({ reset: true }), reloadStats()]);
   };
 
   return (
@@ -80,10 +148,10 @@ export function ActivitiesPage({ privacy, currency, user }) {
         <div class="hero-main">
           <div class="hero-label">Activities</div>
           <div class="hero-value">
-            {rows.length} <span style={{ fontSize: 18, color: 'var(--text-muted)' }}>transactions</span>
+            {allRows.length} <span style={{ fontSize: 18, color: 'var(--text-muted)' }}>transactions</span>
           </div>
           <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-muted)' }}>
-            Across {new Set(rows.map(a => a.asset_symbol)).size} assets in {new Set(rows.map(a => a.account_id)).size} accounts
+            Across {new Set(allRows.map(a => a.asset_symbol)).size} assets in {new Set(allRows.map(a => a.account_id)).size} accounts
           </div>
           {hasCashActivity && (
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
@@ -106,7 +174,7 @@ export function ActivitiesPage({ privacy, currency, user }) {
                 {privacy ? <span class="masked">{fmtMoney(totalBuys, currency)}</span> : fmtMoney(totalBuys, currency)}
               </div>
             </div>
-            <div class="stat-sub">{rows.filter(a => a.side === 'buy').length} buy orders</div>
+            <div class="stat-sub">{buyCount} buy orders</div>
           </div>
           <div class="stat">
             <div>
@@ -115,7 +183,7 @@ export function ActivitiesPage({ privacy, currency, user }) {
                 {privacy ? <span class="masked">{fmtMoney(totalSells, currency)}</span> : fmtMoney(totalSells, currency)}
               </div>
             </div>
-            <div class="stat-sub">{rows.filter(a => a.side === 'sell').length} sell orders</div>
+            <div class="stat-sub">{sellCount} sell orders</div>
           </div>
         </div>
       </div>
@@ -152,7 +220,7 @@ export function ActivitiesPage({ privacy, currency, user }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(tx => {
+            {items.map(tx => {
               const asset = assetMap[tx.asset_symbol];
               const acc = accMap[tx.account_id];
               const isCashTx = CASH_SIDES.has(tx.side);
@@ -198,11 +266,22 @@ export function ActivitiesPage({ privacy, currency, user }) {
                 </tr>
               );
             })}
-            {filtered.length === 0 && (
+            {!loading && items.length === 0 && (
               <tr><td colspan="9" class="empty">No transactions match your filter.</td></tr>
+            )}
+            {loading && items.length === 0 && (
+              <tr><td colspan="9" class="empty">Loading…</td></tr>
             )}
           </tbody>
         </table>
+
+        {cursor && !loading && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
+            <button class="btn" onClick={() => fetchPage({ cursor })} disabled={loadingMore}>
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          </div>
+        )}
       </div>
 
       {editTx && (
@@ -210,7 +289,7 @@ export function ActivitiesPage({ privacy, currency, user }) {
           transaction={editTx}
           user={user}
           onClose={() => setEditTx(null)}
-          onSaved={() => { setEditTx(null); load(); }}
+          onSaved={onSavedTx}
         />
       )}
     </>

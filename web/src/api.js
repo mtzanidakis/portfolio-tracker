@@ -84,6 +84,36 @@ export const api = {
       '&provider=' + encodeURIComponent(provider)),
 
   transactions:  (qs='') => request('GET',   '/api/v1/transactions' + (qs || '')),
+  // transactionsPage is the paginated variant: returns {items, nextCursor}.
+  // The server echoes X-Next-Cursor via response header so the body
+  // stays a plain array (keeps ptagent and the GET-all helper working).
+  transactionsPage: async ({ q = '', side = '', symbol = '', cursor = '', limit = 50 } = {}) => {
+    const params = new URLSearchParams();
+    if (limit)  params.set('limit', limit);
+    if (cursor) params.set('cursor', cursor);
+    if (q)      params.set('q', q);
+    if (side)   params.set('side', side);
+    if (symbol) params.set('symbol', symbol);
+    const csrf = readCookie(CSRF_COOKIE);
+    const headers = { Accept: 'application/json' };
+    if (csrf) headers[CSRF_HEADER] = csrf;
+    const r = await fetch('/api/v1/transactions?' + params.toString(), {
+      method: 'GET',
+      credentials: 'include',
+      headers,
+    });
+    if (!r.ok) {
+      let msg = r.statusText;
+      try { msg = (await r.json()).error || msg; } catch { /* ignore */ }
+      const err = new Error(msg);
+      err.status = r.status;
+      throw err;
+    }
+    return {
+      items: await r.json(),
+      nextCursor: r.headers.get('X-Next-Cursor') || '',
+    };
+  },
   createTx:      (p)     => request('POST',  '/api/v1/transactions', p),
   updateTx:      (id, p) => request('PATCH', `/api/v1/transactions/${id}`, p),
   deleteTx:      (id)    => request('DELETE', `/api/v1/transactions/${id}`),

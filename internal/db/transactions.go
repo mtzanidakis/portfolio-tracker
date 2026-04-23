@@ -16,10 +16,20 @@ type TxFilter struct {
 	UserID      int64 // required (0 = unscoped, not recommended)
 	AccountID   int64
 	AssetSymbol string
-	Side        domain.TxSide
-	From        time.Time // inclusive
-	To          time.Time // inclusive
-	Limit       int       // 0 = no limit
+	Side        domain.TxSide   // single-value (ptagent backward compat)
+	Sides       []domain.TxSide // multi-value (UI group filters)
+	From        time.Time       // inclusive
+	To          time.Time       // inclusive
+	Limit       int             // 0 = no limit
+	// Q is a free-text needle matched case-insensitively against the
+	// tx's asset symbol, the asset's display name (via LEFT JOIN) and
+	// the tx note. Empty string disables the filter.
+	Q string
+	// Cursor pins a "continue after" position for keyset pagination
+	// using the same (occurred_at, id) DESC ordering as the main query.
+	// Both fields must be populated to take effect.
+	CursorOccurredAt time.Time
+	CursorID         int64
 }
 
 // CreateTransaction inserts the given transaction and populates its ID +
@@ -62,43 +72,73 @@ func (db *DB) GetTransaction(ctx context.Context, id int64) (*domain.Transaction
 }
 
 // ListTransactions returns transactions matching f, ordered newest first.
+// A LEFT JOIN on assets is added only when a free-text filter is active,
+// because the asset's name isn't stored on the tx row itself.
 func (db *DB) ListTransactions(ctx context.Context, f TxFilter) ([]*domain.Transaction, error) {
 	var (
 		conds []string
 		args  []any
 	)
 	if f.UserID != 0 {
-		conds = append(conds, "user_id = ?")
+		conds = append(conds, "t.user_id = ?")
 		args = append(args, f.UserID)
 	}
 	if f.AccountID != 0 {
-		conds = append(conds, "account_id = ?")
+		conds = append(conds, "t.account_id = ?")
 		args = append(args, f.AccountID)
 	}
 	if f.AssetSymbol != "" {
-		conds = append(conds, "asset_symbol = ?")
+		conds = append(conds, "t.asset_symbol = ?")
 		args = append(args, f.AssetSymbol)
 	}
-	if f.Side != "" {
-		conds = append(conds, "side = ?")
+	if len(f.Sides) > 0 {
+		placeholders := make([]string, len(f.Sides))
+		for i, s := range f.Sides {
+			placeholders[i] = "?"
+			args = append(args, string(s))
+		}
+		conds = append(conds, "t.side IN ("+strings.Join(placeholders, ",")+")")
+	} else if f.Side != "" {
+		conds = append(conds, "t.side = ?")
 		args = append(args, string(f.Side))
 	}
 	if !f.From.IsZero() {
-		conds = append(conds, "occurred_at >= ?")
+		conds = append(conds, "t.occurred_at >= ?")
 		args = append(args, f.From)
 	}
 	if !f.To.IsZero() {
-		conds = append(conds, "occurred_at <= ?")
+		conds = append(conds, "t.occurred_at <= ?")
 		args = append(args, f.To)
 	}
+	if f.Q != "" {
+		needle := "%" + f.Q + "%"
+		conds = append(conds,
+			"(t.asset_symbol LIKE ? COLLATE NOCASE"+
+				" OR a.name LIKE ? COLLATE NOCASE"+
+				" OR t.note LIKE ? COLLATE NOCASE)")
+		args = append(args, needle, needle, needle)
+	}
+	// Keyset cursor — only applied when both fields are set. The
+	// tuple comparison keeps us aligned with the ORDER BY so rows on
+	// the boundary day don't get skipped or duplicated.
+	if !f.CursorOccurredAt.IsZero() && f.CursorID != 0 {
+		conds = append(conds,
+			"(t.occurred_at < ? OR (t.occurred_at = ? AND t.id < ?))")
+		args = append(args, f.CursorOccurredAt, f.CursorOccurredAt, f.CursorID)
+	}
 
-	q := `SELECT id, user_id, account_id, asset_symbol, side, qty, price, fee,
-	             fx_to_base, occurred_at, note, created_at
-	        FROM transactions`
+	from := "transactions t"
+	if f.Q != "" {
+		from += " LEFT JOIN assets a ON a.symbol = t.asset_symbol"
+	}
+
+	q := `SELECT t.id, t.user_id, t.account_id, t.asset_symbol, t.side, t.qty, t.price, t.fee,
+	             t.fx_to_base, t.occurred_at, t.note, t.created_at
+	        FROM ` + from
 	if len(conds) > 0 {
 		q += " WHERE " + strings.Join(conds, " AND ")
 	}
-	q += " ORDER BY occurred_at DESC, id DESC"
+	q += " ORDER BY t.occurred_at DESC, t.id DESC"
 	if f.Limit > 0 {
 		q += fmt.Sprintf(" LIMIT %d", f.Limit)
 	}
