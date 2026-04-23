@@ -114,6 +114,7 @@ export const api = {
       nextCursor: r.headers.get('X-Next-Cursor') || '',
     };
   },
+  txSummary:     ()      => request('GET',   '/api/v1/transactions/summary'),
   createTx:      (p)     => request('POST',  '/api/v1/transactions', p),
   updateTx:      (id, p) => request('PATCH', `/api/v1/transactions/${id}`, p),
   deleteTx:      (id)    => request('DELETE', `/api/v1/transactions/${id}`),

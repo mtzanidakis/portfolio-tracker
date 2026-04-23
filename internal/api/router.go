@@ -97,6 +97,7 @@ func NewRouter(d *db.DB, sessionLifetime time.Duration, opts ...Option) *http.Se
 
 	mux.Handle("GET /api/v1/transactions", protect(listTransactionsHandler(d)))
 	mux.Handle("POST /api/v1/transactions", protect(createTransactionHandler(d)))
+	mux.Handle("GET /api/v1/transactions/summary", protect(transactionSummaryHandler(d)))
 	mux.Handle("GET /api/v1/transactions/{id}", protect(getTransactionHandler(d)))
 	mux.Handle("PATCH /api/v1/transactions/{id}", protect(updateTransactionHandler(d)))
 	mux.Handle("DELETE /api/v1/transactions/{id}", protect(deleteTransactionHandler(d)))

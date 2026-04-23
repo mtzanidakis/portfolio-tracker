@@ -182,6 +182,21 @@ func createTransactionHandler(d *db.DB) http.HandlerFunc {
 	}
 }
 
+// transactionSummaryHandler returns one-shot aggregates for the
+// signed-in user — used by the Activities hero so the page doesn't
+// have to paginate through the whole history just to draw totals.
+func transactionSummaryHandler(d *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFrom(r.Context())
+		s, err := d.TransactionSummary(r.Context(), u.ID)
+		if err != nil {
+			writeDBError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, s)
+	}
+}
+
 func getTransactionHandler(d *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFrom(r.Context())

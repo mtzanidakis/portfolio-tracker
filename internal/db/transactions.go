@@ -180,6 +180,50 @@ func (db *DB) UpdateTransaction(ctx context.Context, t *domain.Transaction) erro
 	return nil
 }
 
+// TxSummary collapses a user's whole transaction history into the
+// aggregates the Activities hero wants. Every monetary field is in the
+// user's base currency (tx.fx_to_base is locked at trade time).
+type TxSummary struct {
+	Count          int     `json:"count"`
+	AssetCount     int     `json:"asset_count"`
+	AccountCount   int     `json:"account_count"`
+	TotalBuys      float64 `json:"total_buys"`
+	TotalSells     float64 `json:"total_sells"`
+	TotalDeposits  float64 `json:"total_deposits"`
+	TotalWithdraws float64 `json:"total_withdraws"`
+	TotalInterest  float64 `json:"total_interest"`
+	BuyCount       int     `json:"buy_count"`
+	SellCount      int     `json:"sell_count"`
+}
+
+// TransactionSummary returns the aggregate totals for a user in one
+// round trip. Uses the idx_tx_user_date index for a cheap scan; the
+// CASE-based sums let us avoid five separate queries.
+func (db *DB) TransactionSummary(ctx context.Context, userID int64) (*TxSummary, error) {
+	var s TxSummary
+	err := db.QueryRowContext(ctx, `
+        SELECT COUNT(*),
+               COUNT(DISTINCT asset_symbol),
+               COUNT(DISTINCT account_id),
+               COALESCE(SUM(CASE WHEN side = 'buy'      THEN qty*price*fx_to_base ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN side = 'sell'     THEN qty*price*fx_to_base ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN side = 'deposit'  THEN qty*price*fx_to_base ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN side = 'withdraw' THEN qty*price*fx_to_base ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN side = 'interest' THEN qty*price*fx_to_base ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN side = 'buy'  THEN 1 ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN side = 'sell' THEN 1 ELSE 0 END), 0)
+          FROM transactions
+         WHERE user_id = ?`, userID).
+		Scan(&s.Count, &s.AssetCount, &s.AccountCount,
+			&s.TotalBuys, &s.TotalSells,
+			&s.TotalDeposits, &s.TotalWithdraws, &s.TotalInterest,
+			&s.BuyCount, &s.SellCount)
+	if err != nil {
+		return nil, fmt.Errorf("tx summary: %w", err)
+	}
+	return &s, nil
+}
+
 // DeleteTransaction removes the transaction by id.
 func (db *DB) DeleteTransaction(ctx context.Context, id int64) error {
 	res, err := db.ExecContext(ctx, `DELETE FROM transactions WHERE id = ?`, id)

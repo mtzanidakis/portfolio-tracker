@@ -25,14 +25,14 @@ const Q_DEBOUNCE_MS = 300;
 export function ActivitiesPage({ privacy, currency, user }) {
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
-  // Items are the paginated slice from the server. `stats` holds the
-  // aggregate totals for the hero — we fetch the whole list once for
-  // those since summing only the current page would be misleading.
+  // Items are the paginated slice from the server. Aggregates for the
+  // hero come from /api/v1/transactions/summary so we never load the
+  // whole history just to sum it.
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [stats, setStats] = useState(null);
+  const [summary, setSummary] = useState(null);
   const [assets, setAssets] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [editTx, setEditTx] = useState(null);
@@ -54,13 +54,9 @@ export function ActivitiesPage({ privacy, currency, user }) {
     setAccounts(accs || []);
   };
 
-  const reloadStats = async () => {
+  const reloadSummary = async () => {
     try {
-      // Unpaginated — used only for the hero. Cheap for the single-user
-      // self-hosted case; swap for a dedicated aggregate endpoint later
-      // if someone ends up with tens of thousands of rows.
-      const all = await api.transactions();
-      setStats(all || []);
+      setSummary(await api.txSummary());
     } catch (e) {
       setErr(e.message);
     }
@@ -98,7 +94,7 @@ export function ActivitiesPage({ privacy, currency, user }) {
   // Initial load: lookup tables + first page + aggregate stats.
   useEffect(() => {
     loadLookups();
-    reloadStats();
+    reloadSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -113,25 +109,26 @@ export function ActivitiesPage({ privacy, currency, user }) {
   const assetMap = Object.fromEntries((assets || []).map(a => [a.symbol, a]));
   const accMap = Object.fromEntries((accounts || []).map(a => [a.id, a]));
 
-  // Aggregate stats derive from the full dataset (stats state), not
-  // the current page — otherwise filtering would change the hero.
-  const allRows = stats || [];
-  const inBase = (tx) => tx.qty * tx.price * (tx.fx_to_base || 1);
-  const totalBuys = allRows.filter(a => a.side === 'buy').reduce((s, a) => s + inBase(a), 0);
-  const totalSells = allRows.filter(a => a.side === 'sell').reduce((s, a) => s + inBase(a), 0);
-  const totalDeposits = allRows.filter(a => a.side === 'deposit').reduce((s, a) => s + inBase(a), 0);
-  const totalWithdraws = allRows.filter(a => a.side === 'withdraw').reduce((s, a) => s + inBase(a), 0);
-  const totalInterest = allRows.filter(a => a.side === 'interest').reduce((s, a) => s + inBase(a), 0);
+  // Aggregates come from the dedicated summary endpoint so the hero
+  // never depends on having every transaction loaded client-side.
+  const totalBuys      = summary?.total_buys      ?? 0;
+  const totalSells     = summary?.total_sells     ?? 0;
+  const totalDeposits  = summary?.total_deposits  ?? 0;
+  const totalWithdraws = summary?.total_withdraws ?? 0;
+  const totalInterest  = summary?.total_interest  ?? 0;
   const cashFlow = totalDeposits + totalInterest - totalWithdraws;
   const hasCashActivity = totalDeposits + totalWithdraws + totalInterest > 0;
-  const buyCount = allRows.filter(a => a.side === 'buy').length;
-  const sellCount = allRows.filter(a => a.side === 'sell').length;
+  const buyCount  = summary?.buy_count  ?? 0;
+  const sellCount = summary?.sell_count ?? 0;
+  const txCount   = summary?.count         ?? 0;
+  const assetCnt  = summary?.asset_count   ?? 0;
+  const acctCnt   = summary?.account_count ?? 0;
 
   const handleDelete = async (tx) => {
     if (!confirm(`Delete this ${tx.side} of ${tx.qty} ${tx.asset_symbol}?`)) return;
     try {
       await api.deleteTx(tx.id);
-      await Promise.all([fetchPage({ reset: true }), reloadStats()]);
+      await Promise.all([fetchPage({ reset: true }), reloadSummary()]);
     } catch (e) {
       alert(e.message || 'Failed to delete transaction.');
     }
@@ -139,7 +136,7 @@ export function ActivitiesPage({ privacy, currency, user }) {
 
   const onSavedTx = async () => {
     setEditTx(null);
-    await Promise.all([fetchPage({ reset: true }), reloadStats()]);
+    await Promise.all([fetchPage({ reset: true }), reloadSummary()]);
   };
 
   return (
@@ -148,10 +145,10 @@ export function ActivitiesPage({ privacy, currency, user }) {
         <div class="hero-main">
           <div class="hero-label">Activities</div>
           <div class="hero-value">
-            {allRows.length} <span style={{ fontSize: 18, color: 'var(--text-muted)' }}>transactions</span>
+            {txCount} <span style={{ fontSize: 18, color: 'var(--text-muted)' }}>transactions</span>
           </div>
           <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-muted)' }}>
-            Across {new Set(allRows.map(a => a.asset_symbol)).size} assets in {new Set(allRows.map(a => a.account_id)).size} accounts
+            Across {assetCnt} assets in {acctCnt} accounts
           </div>
           {hasCashActivity && (
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
