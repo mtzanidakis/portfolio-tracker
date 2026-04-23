@@ -88,7 +88,7 @@ export function App() {
   );
 
   const currency = user.base_currency;
-  const pageProps = { privacy, currency, key: refreshTick };
+  const pageProps = { privacy, currency };
 
   return (
     <div class="app" data-screen-label={page}>
@@ -104,11 +104,15 @@ export function App() {
         <Topbar title={TITLES[page].t} sub={TITLES[page].s} actions={topActions}
           onMenuClick={() => setSidebarOpen(true)} />
         <div class="content">
-          {page === 'performance' && <PerformancePage {...pageProps} />}
-          {page === 'allocations' && <AllocationsPage {...pageProps} />}
-          {page === 'activities'  && <ActivitiesPage  {...pageProps} user={user} />}
-          {page === 'accounts'    && <AccountsPage    {...pageProps} />}
-          {page === 'assets'      && <AssetsPage      {...pageProps} />}
+          {/* key forces a remount after any cross-page action (Add
+            * transaction from the topbar) so each page re-fetches
+            * from scratch. Preact doesn't pick up `key` from a
+            * spread — it has to be on the element directly. */}
+          {page === 'performance' && <PerformancePage key={refreshTick} {...pageProps} />}
+          {page === 'allocations' && <AllocationsPage key={refreshTick} {...pageProps} />}
+          {page === 'activities'  && <ActivitiesPage  key={refreshTick} {...pageProps} user={user} />}
+          {page === 'accounts'    && <AccountsPage    key={refreshTick} {...pageProps} />}
+          {page === 'assets'      && <AssetsPage      key={refreshTick} {...pageProps} />}
         </div>
       </main>
 
