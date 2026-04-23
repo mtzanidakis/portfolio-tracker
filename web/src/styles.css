@@ -1092,6 +1092,11 @@ html[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,0.55); }
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 14px 16px;
+    /* Flex column so `order` can push data-primary to the top even
+     * when it isn't the first <td> in DOM order (Activities leads
+     * with Date, not Asset). */
+    display: flex;
+    flex-direction: column;
   }
   .card > .table tr:hover td { background: transparent; }
   .card > .table td {
@@ -1115,13 +1120,15 @@ html[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,0.55); }
     flex-shrink: 0;
   }
   /* Primary cell — no label, header-like, leaves room for the actions
-   * floated to the top-right. */
+   * floated to the top-right. `order: -1` hoists it to the top of the
+   * card even when the column isn't first in DOM order. */
   .card > .table td[data-primary] {
     display: block;
     text-align: left;
     padding: 0 72px 10px 0;
     margin-bottom: 10px;
     border-bottom: 1px solid var(--border) !important;
+    order: -1;
   }
   .card > .table td[data-actions] {
     position: absolute;
