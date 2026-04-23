@@ -151,14 +151,16 @@ type performancePoint struct {
 }
 
 type performanceResponse struct {
-	Total     float64            `json:"total"`
-	Cost      float64            `json:"cost"`
-	PnL       float64            `json:"pnl"`
-	PnLPct    float64            `json:"pnl_pct"`
-	Currency  string             `json:"currency"`
-	Timeframe string             `json:"timeframe"`
-	Series    []performancePoint `json:"series"`
-	AnyStale  bool               `json:"any_stale"`
+	Total      float64            `json:"total"`      // current market value of open positions, base
+	Cost       float64            `json:"cost"`       // current cost basis of open positions, base
+	Unrealized float64            `json:"unrealized"` // total - cost, base
+	Realized   float64            `json:"realized"`   // lifetime realised PnL across closed trades, base
+	PnL        float64            `json:"pnl"`        // unrealized + realized — the figure the hero shows
+	PnLPct     float64            `json:"pnl_pct"`    // pnl as a % of total capital put in (buys + fees)
+	Currency   string             `json:"currency"`
+	Timeframe  string             `json:"timeframe"`
+	Series     []performancePoint `json:"series"`
+	AnyStale   bool               `json:"any_stale"`
 }
 
 // timeframeDays maps the client's timeframe string to a day count.
@@ -218,22 +220,42 @@ func performanceHandler(d *db.DB) http.HandlerFunc {
 			}
 		}
 
+		realized, err := portfolio.RealizedPnL(txs)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		unrealized := total - cost
+		pnl := unrealized + realized
+
+		// Percentage is against total capital deployed — sum of every
+		// buy's gross plus fees, in base currency. That stays stable as
+		// positions close, unlike `cost` which drops to zero when all
+		// positions are sold.
+		var deployed float64
+		for _, tx := range txs {
+			if tx.Side == domain.SideBuy {
+				deployed += (tx.Qty*tx.Price + tx.Fee) * tx.FxToBase
+			}
+		}
 		var pct float64
-		if cost > 0 {
-			pct = (total - cost) / cost * 100
+		if deployed > 0 {
+			pct = pnl / deployed * 100
 		}
 
 		series := buildSeries(r.Context(), d, txs, tf, curFn, u.BaseCurrency)
 
 		resp := performanceResponse{
-			Total:     total,
-			Cost:      cost,
-			PnL:       total - cost,
-			AnyStale:  anyStale,
-			PnLPct:    pct,
-			Currency:  string(u.BaseCurrency),
-			Timeframe: tf,
-			Series:    series,
+			Total:      total,
+			Cost:       cost,
+			Unrealized: unrealized,
+			Realized:   realized,
+			PnL:        pnl,
+			PnLPct:     pct,
+			AnyStale:   anyStale,
+			Currency:   string(u.BaseCurrency),
+			Timeframe:  tf,
+			Series:     series,
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}

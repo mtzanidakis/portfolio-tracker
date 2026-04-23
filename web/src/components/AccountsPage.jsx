@@ -27,29 +27,60 @@ export function AccountsPage() {
   if (err) return <div class="empty">Error: {err}</div>;
 
   // Per-account stats computed in the account's currency at book value.
-  // Trades and cash operations live on separate ledgers: the same card
-  // can show both when an account hosts a mix (e.g., a brokerage that
-  // also holds idle cash).
-  //   invested    = buy(qty*price + fee) − sell(qty*price)
+  // Trades and cash operations live on separate ledgers:
+  //   openCost    = running cost basis of still-open positions
+  //                 (same average-cost method as portfolio.Holdings)
+  //   realized    = lifetime realised PnL across closed trades in this
+  //                 account — the missing piece that made a fully-sold
+  //                 loser look like "net invested $11.84"
   //   cashBalance = deposit + interest − withdraw
+  // Transactions are replayed chronologically per symbol.
   const statsFor = (accountId) => {
     const txs = transactions.filter(t => t.account_id === accountId);
-    let invested = 0;
+    const sorted = [...txs].sort((a, b) => {
+      const da = new Date(a.occurred_at).getTime();
+      const db = new Date(b.occurred_at).getTime();
+      if (da !== db) return da - db;
+      return (a.id || 0) - (b.id || 0);
+    });
+    const state = new Map();
+    let realized = 0;
     let cashBalance = 0;
     let hasTrade = false;
     let hasCash = false;
-    for (const t of txs) {
+    for (const t of sorted) {
       const gross = t.qty * t.price;
       const fee = t.fee || 0;
       switch (t.side) {
-        case 'buy':      invested += gross + fee; hasTrade = true; break;
-        case 'sell':     invested -= gross;       hasTrade = true; break;
+        case 'buy': {
+          hasTrade = true;
+          const cur = state.get(t.asset_symbol) || { qty: 0, cost: 0 };
+          cur.qty += t.qty;
+          cur.cost += gross + fee;
+          state.set(t.asset_symbol, cur);
+          break;
+        }
+        case 'sell': {
+          hasTrade = true;
+          const cur = state.get(t.asset_symbol) || { qty: 0, cost: 0 };
+          const avg = cur.qty > 0 ? cur.cost / cur.qty : 0;
+          const proceeds = gross - fee;
+          const costRemoved = avg * t.qty;
+          realized += proceeds - costRemoved;
+          cur.qty -= t.qty;
+          cur.cost -= costRemoved;
+          if (cur.qty < 1e-9) { cur.qty = 0; cur.cost = 0; }
+          state.set(t.asset_symbol, cur);
+          break;
+        }
         case 'deposit':
-        case 'interest': cashBalance += gross;    hasCash = true;  break;
-        case 'withdraw': cashBalance -= gross;    hasCash = true;  break;
+        case 'interest': cashBalance += gross; hasCash = true; break;
+        case 'withdraw': cashBalance -= gross; hasCash = true; break;
       }
     }
-    return { count: txs.length, invested, cashBalance, hasTrade, hasCash };
+    let openCost = 0;
+    for (const { cost } of state.values()) openCost += cost;
+    return { count: txs.length, openCost, realized, cashBalance, hasTrade, hasCash };
   };
 
   const handleDelete = async (acc) => {
@@ -66,7 +97,7 @@ export function AccountsPage() {
     <>
       <div class="acc-grid">
         {accounts.map(a => {
-          const { count, invested, cashBalance, hasTrade, hasCash } = statsFor(a.id);
+          const { count, openCost, realized, cashBalance, hasTrade, hasCash } = statsFor(a.id);
           return (
             <div key={a.id} class="acc-card">
               <div class="acc-head" style={{ position: 'relative' }}>
@@ -100,13 +131,21 @@ export function AccountsPage() {
               )}
               {hasTrade && (
                 <div>
-                  <div class="stat-label">Net invested · {a.currency}</div>
-                  <div class="acc-value">{fmtMoney(invested, a.currency)}</div>
+                  <div class="stat-label">Cost basis · {a.currency}</div>
+                  <div class="acc-value">{fmtMoney(openCost, a.currency)}</div>
+                  {realized !== 0 && (
+                    <div style={{
+                      fontSize: 12, fontFamily: 'var(--font-mono)', marginTop: 4,
+                      color: realized >= 0 ? 'var(--pos)' : 'var(--neg)',
+                    }}>
+                      Realized {fmtMoney(realized, a.currency, { sign: true })}
+                    </div>
+                  )}
                 </div>
               )}
               {!hasCash && !hasTrade && (
                 <div>
-                  <div class="stat-label">Net invested · {a.currency}</div>
+                  <div class="stat-label">Cost basis · {a.currency}</div>
                   <div class="acc-value">{fmtMoney(0, a.currency)}</div>
                 </div>
               )}

@@ -68,6 +68,13 @@ export function PerformancePage({ privacy, currency }) {
             {fmtMoney(perf.pnl, currency, { sign: true })} · {fmtPct(perf.pnl_pct)}
           </div>
           <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-faint)' }}>all time</div>
+          {(perf.realized || perf.unrealized) ? (
+            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+              Unrealized {fmtMoney(perf.unrealized || 0, currency, { sign: true })}
+              {' · '}
+              Realized {fmtMoney(perf.realized || 0, currency, { sign: true })}
+            </div>
+          ) : null}
           {anyStale && (
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--neg)' }}>
               Some prices are unavailable — stale positions are valued at cost.
