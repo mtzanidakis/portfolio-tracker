@@ -29,6 +29,20 @@ var logoHostAllowlist = map[string]struct{}{
 	"coin-images.coingecko.com": {},
 }
 
+// allowedLogoContentTypes whitelists the MIME types we're willing to
+// cache. http.DetectContentType doesn't know about SVG, so for SVG we
+// have to trust an upstream Content-Type of image/svg+xml directly —
+// nosniff on the response keeps the browser from reinterpreting.
+var allowedLogoContentTypes = map[string]struct{}{
+	"image/png":                {},
+	"image/jpeg":               {},
+	"image/gif":                {},
+	"image/webp":               {},
+	"image/svg+xml":            {},
+	"image/x-icon":             {},
+	"image/vnd.microsoft.icon": {},
+}
+
 func listAssetsHandler(d *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		assets, err := d.ListAssets(r.Context())
@@ -256,6 +270,7 @@ func fetchLogoBytes(ctx context.Context, client *http.Client, rawURL string) ([]
 		return nil, "", err
 	}
 	req.Header.Set("Accept", "image/*")
+	req.Header.Set("User-Agent", "portfolio-tracker (+https://github.com/mtzanidakis/portfolio-tracker)")
 	resp, err := client.Do(req) //nolint:gosec // request URL validated above
 	if err != nil {
 		return nil, "", err
@@ -268,11 +283,20 @@ func fetchLogoBytes(ctx context.Context, client *http.Client, rawURL string) ([]
 	if err != nil {
 		return nil, "", err
 	}
-	ct := http.DetectContentType(body)
-	if !strings.HasPrefix(ct, "image/") {
-		return nil, "", fmt.Errorf("unexpected content-type %q", ct)
+	// Honour the upstream Content-Type when it's on the image whitelist
+	// (needed for SVG, which DetectContentType classifies as text/xml).
+	// Otherwise fall back to byte-sniffing — that catches upstreams that
+	// label everything application/octet-stream.
+	upstreamCT := strings.ToLower(strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]))
+	if _, ok := allowedLogoContentTypes[upstreamCT]; ok {
+		return body, upstreamCT, nil
 	}
-	return body, ct, nil
+	sniffed := http.DetectContentType(body)
+	sniffedBase := strings.ToLower(strings.TrimSpace(strings.SplitN(sniffed, ";", 2)[0]))
+	if _, ok := allowedLogoContentTypes[sniffedBase]; ok {
+		return body, sniffedBase, nil
+	}
+	return nil, "", fmt.Errorf("unexpected content-type upstream=%q sniffed=%q", upstreamCT, sniffed)
 }
 
 func serveLogo(w http.ResponseWriter, logo *db.AssetLogo) {
