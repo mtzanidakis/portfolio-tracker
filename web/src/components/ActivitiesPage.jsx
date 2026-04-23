@@ -185,11 +185,23 @@ export function ActivitiesPage({ privacy, currency, user, initialAccountId = 0, 
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
               Cash flow:{' '}
               <span class="mono" style={{ color: cashFlow >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
-                {fmtMoney(cashFlow, currency, { sign: true })}
+                {privacy
+                  ? <span class="masked">{fmtMoney(cashFlow, currency, { sign: true })}</span>
+                  : fmtMoney(cashFlow, currency, { sign: true })}
               </span>
               {' '}
               <span style={{ color: 'var(--text-faint)' }}>
-                ({fmtMoney(totalDeposits, currency)} in · {fmtMoney(totalInterest, currency)} interest · {fmtMoney(totalWithdraws, currency)} out)
+                ({privacy
+                    ? <span class="masked">{fmtMoney(totalDeposits, currency)}</span>
+                    : fmtMoney(totalDeposits, currency)} in
+                {' · '}
+                {privacy
+                    ? <span class="masked">{fmtMoney(totalInterest, currency)}</span>
+                    : fmtMoney(totalInterest, currency)} interest
+                {' · '}
+                {privacy
+                    ? <span class="masked">{fmtMoney(totalWithdraws, currency)}</span>
+                    : fmtMoney(totalWithdraws, currency)} out)
               </span>
             </div>
           )}

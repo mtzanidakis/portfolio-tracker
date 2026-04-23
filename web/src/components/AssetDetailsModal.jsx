@@ -10,7 +10,12 @@ import { api } from '../api.js';
 // symbol back to App so it can route to Activities with this asset
 // pinned in the filter. Data is loaded fresh on open — small payloads
 // relative to the full asset page, and keeps the modal self-contained.
-export function AssetDetailsModal({ asset, onClose, onShowActivities }) {
+export function AssetDetailsModal({ asset, privacy, onClose, onShowActivities }) {
+  // Mask wrapper so monetary sums blur in privacy mode; percentages
+  // and counts stay readable.
+  const m = (v, opts) => privacy
+    ? <span class="masked">{fmtMoney(v, asset.currency || 'USD', opts)}</span>
+    : fmtMoney(v, asset.currency || 'USD', opts);
   const [priceInfo, setPriceInfo] = useState(null);
   const [txs, setTxs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,8 +40,6 @@ export function AssetDetailsModal({ asset, onClose, onShowActivities }) {
     })();
     return () => { cancelled = true; };
   }, [asset.symbol]);
-
-  const cur = asset.currency || 'USD';
 
   // Derive everything in the asset's native currency so the numbers
   // line up with the user's entered tx prices. Average-cost method
@@ -126,7 +129,7 @@ export function AssetDetailsModal({ asset, onClose, onShowActivities }) {
           }}>
             <Stat
               label="Current price"
-              value={priceStale ? '—' : fmtMoney(currentPrice, cur)}
+              value={priceStale ? '—' : m(currentPrice)}
               sub={priceStale ? 'price unavailable' : null}
             />
             <Stat
@@ -135,21 +138,21 @@ export function AssetDetailsModal({ asset, onClose, onShowActivities }) {
             />
             <Stat
               label="Current value"
-              value={fmtMoney(currentValue, cur)}
+              value={m(currentValue)}
             />
             <Stat
               label="Investment sum"
-              value={fmtMoney(investmentSum, cur)}
+              value={m(investmentSum)}
               sub={buys.length ? `across ${buys.length} buy${buys.length === 1 ? '' : 's'}` : 'no buys yet'}
             />
             <Stat
               label="Total PnL"
-              value={fmtMoney(totalPnL, cur, { sign: true }) + ' · ' + fmtPct(pnlPct)}
+              value={<>{m(totalPnL, { sign: true })}{' · '}{fmtPct(pnlPct)}</>}
               sub={
                 <>
-                  Unrealized {fmtMoney(unrealized, cur, { sign: true })}
+                  Unrealized {m(unrealized, { sign: true })}
                   {' · '}
-                  Realized {fmtMoney(realized, cur, { sign: true })}
+                  Realized {m(realized, { sign: true })}
                 </>
               }
               color={totalPnL >= 0 ? 'var(--pos)' : 'var(--neg)'}
@@ -164,7 +167,7 @@ export function AssetDetailsModal({ asset, onClose, onShowActivities }) {
                 label="Buy price range"
                 value={
                   minBuy !== null
-                    ? `${fmtMoney(minBuy, cur)} — ${fmtMoney(maxBuy, cur)}`
+                    ? <>{m(minBuy)} — {m(maxBuy)}</>
                     : '—'
                 }
               />

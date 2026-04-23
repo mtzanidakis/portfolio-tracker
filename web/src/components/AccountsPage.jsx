@@ -5,7 +5,12 @@ import { AccountCardMenu } from './AccountCardMenu.jsx';
 import { fmtMoney } from '../format.js';
 import { api } from '../api.js';
 
-export function AccountsPage({ onOpenActivity }) {
+export function AccountsPage({ privacy, onOpenActivity }) {
+  // Wrap fmtMoney so the card's monetary numbers disappear behind a
+  // blur in privacy mode — percentages and counts stay legible.
+  const m = (v, cur, opts) => privacy
+    ? <span class="masked">{fmtMoney(v, cur, opts)}</span>
+    : fmtMoney(v, cur, opts);
   const [accounts, setAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
   // `holdings` is the cross-account aggregate from /api/v1/holdings,
@@ -181,7 +186,7 @@ export function AccountsPage({ onOpenActivity }) {
               {hasCash && (
                 <div>
                   <div class="stat-label">Cash balance · {a.currency}</div>
-                  <div class="acc-value">{fmtMoney(cashBalance, a.currency)}</div>
+                  <div class="acc-value">{m(cashBalance, a.currency)}</div>
                 </div>
               )}
               {hasTrade && hasOpen && (() => {
@@ -196,15 +201,15 @@ export function AccountsPage({ onOpenActivity }) {
                           style={{ marginLeft: 6, color: 'var(--neg)' }}>⚠</span>
                       )}
                     </div>
-                    <div class="acc-value">{fmtMoney(openValue, a.currency)}</div>
+                    <div class="acc-value">{m(openValue, a.currency)}</div>
                     <div style={{
                       fontSize: 12, fontFamily: 'var(--font-mono)', marginTop: 4,
                       color: 'var(--text-muted)',
                     }}>
-                      Cost {fmtMoney(openCost, a.currency)}
+                      Cost {m(openCost, a.currency)}
                       {' · '}
                       <span style={{ color: unrealColor }}>
-                        {fmtMoney(unrealized, a.currency, { sign: true })} ({unrealPct.toFixed(2)}%)
+                        {m(unrealized, a.currency, { sign: true })} ({unrealPct.toFixed(2)}%)
                       </span>
                     </div>
                     {realized !== 0 && (
@@ -212,7 +217,7 @@ export function AccountsPage({ onOpenActivity }) {
                         fontSize: 12, fontFamily: 'var(--font-mono)', marginTop: 2,
                         color: realized >= 0 ? 'var(--pos)' : 'var(--neg)',
                       }}>
-                        Realized {fmtMoney(realized, a.currency, { sign: true })}
+                        Realized {m(realized, a.currency, { sign: true })}
                       </div>
                     )}
                   </div>
@@ -221,13 +226,13 @@ export function AccountsPage({ onOpenActivity }) {
               {hasTrade && !hasOpen && (
                 <div>
                   <div class="stat-label">Cost basis · {a.currency}</div>
-                  <div class="acc-value">{fmtMoney(0, a.currency)}</div>
+                  <div class="acc-value">{m(0, a.currency)}</div>
                   {realized !== 0 && (
                     <div style={{
                       fontSize: 12, fontFamily: 'var(--font-mono)', marginTop: 4,
                       color: realized >= 0 ? 'var(--pos)' : 'var(--neg)',
                     }}>
-                      Realized {fmtMoney(realized, a.currency, { sign: true })}
+                      Realized {m(realized, a.currency, { sign: true })}
                     </div>
                   )}
                 </div>
@@ -235,7 +240,7 @@ export function AccountsPage({ onOpenActivity }) {
               {!hasCash && !hasTrade && (
                 <div>
                   <div class="stat-label">Cost basis · {a.currency}</div>
-                  <div class="acc-value">{fmtMoney(0, a.currency)}</div>
+                  <div class="acc-value">{m(0, a.currency)}</div>
                 </div>
               )}
 

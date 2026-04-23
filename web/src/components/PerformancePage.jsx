@@ -65,14 +65,23 @@ export function PerformancePage({ privacy, currency }) {
           </div>
           <div class={`hero-delta ${perf.pnl < 0 ? 'neg' : ''}`}>
             <Icon name={perf.pnl >= 0 ? 'arrowUp' : 'arrowDown'} size={12} />
-            {fmtMoney(perf.pnl, currency, { sign: true })} · {fmtPct(perf.pnl_pct)}
+            {privacy
+              ? <span class="masked">{fmtMoney(perf.pnl, currency, { sign: true })}</span>
+              : fmtMoney(perf.pnl, currency, { sign: true })}
+            {' · '}{fmtPct(perf.pnl_pct)}
           </div>
           <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-faint)' }}>all time</div>
           {(perf.realized || perf.unrealized) ? (
             <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-              Unrealized {fmtMoney(perf.unrealized || 0, currency, { sign: true })}
+              Unrealized{' '}
+              {privacy
+                ? <span class="masked">{fmtMoney(perf.unrealized || 0, currency, { sign: true })}</span>
+                : fmtMoney(perf.unrealized || 0, currency, { sign: true })}
               {' · '}
-              Realized {fmtMoney(perf.realized || 0, currency, { sign: true })}
+              Realized{' '}
+              {privacy
+                ? <span class="masked">{fmtMoney(perf.realized || 0, currency, { sign: true })}</span>
+                : fmtMoney(perf.realized || 0, currency, { sign: true })}
             </div>
           ) : null}
           {anyStale && (
@@ -105,7 +114,10 @@ export function PerformancePage({ privacy, currency }) {
           <div>
             <div class="card-title">Portfolio performance</div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: periodPnL >= 0 ? 'var(--pos)' : 'var(--neg)', marginTop: 4 }}>
-              {fmtMoney(periodPnL, currency, { sign: true })} · {fmtPct(periodPct)} <span style={{ color: 'var(--text-faint)' }}>this period</span>
+              {privacy
+                ? <span class="masked">{fmtMoney(periodPnL, currency, { sign: true })}</span>
+                : fmtMoney(periodPnL, currency, { sign: true })}
+              {' · '}{fmtPct(periodPct)} <span style={{ color: 'var(--text-faint)' }}>this period</span>
             </div>
           </div>
           <div class="timeframe">

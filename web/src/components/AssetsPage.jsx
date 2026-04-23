@@ -7,7 +7,7 @@ import { api } from '../api.js';
 
 const TYPE_LABEL = { stock: 'Stock', etf: 'ETF', crypto: 'Crypto', cash: 'Cash' };
 
-export function AssetsPage({ onOpenActivity }) {
+export function AssetsPage({ privacy, onOpenActivity }) {
   const [assets, setAssets] = useState([]);
   const [query, setQuery] = useState('');
   const [err, setErr] = useState(null);
@@ -142,6 +142,7 @@ export function AssetsPage({ onOpenActivity }) {
       {detailsAsset && (
         <AssetDetailsModal
           asset={detailsAsset}
+          privacy={privacy}
           onClose={() => setDetailsAsset(null)}
           onShowActivities={(sym) => { if (onOpenActivity) onOpenActivity(sym); }}
         />
