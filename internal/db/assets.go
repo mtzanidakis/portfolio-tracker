@@ -18,17 +18,18 @@ func (db *DB) UpsertAsset(ctx context.Context, a *domain.Asset) error {
 		return fmt.Errorf("invalid currency %q", a.Currency)
 	}
 	_, err := db.ExecContext(ctx, `
-        INSERT INTO assets(symbol, name, type, currency, color, provider, provider_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO assets(symbol, name, type, currency, color, provider, provider_id, logo_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(symbol) DO UPDATE SET
             name        = excluded.name,
             type        = excluded.type,
             currency    = excluded.currency,
             color       = excluded.color,
             provider    = excluded.provider,
-            provider_id = excluded.provider_id`,
+            provider_id = excluded.provider_id,
+            logo_url    = excluded.logo_url`,
 		a.Symbol, a.Name, string(a.Type), string(a.Currency),
-		a.Color, a.Provider, a.ProviderID,
+		a.Color, a.Provider, a.ProviderID, a.LogoURL,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert asset: %w", err)
@@ -43,9 +44,9 @@ func (db *DB) GetAsset(ctx context.Context, symbol string) (*domain.Asset, error
 		typ, cur string
 	)
 	err := db.QueryRowContext(ctx, `
-        SELECT symbol, name, type, currency, color, provider, provider_id
+        SELECT symbol, name, type, currency, color, provider, provider_id, logo_url
           FROM assets WHERE symbol = ?`, symbol).
-		Scan(&a.Symbol, &a.Name, &typ, &cur, &a.Color, &a.Provider, &a.ProviderID)
+		Scan(&a.Symbol, &a.Name, &typ, &cur, &a.Color, &a.Provider, &a.ProviderID, &a.LogoURL)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -60,7 +61,7 @@ func (db *DB) GetAsset(ctx context.Context, symbol string) (*domain.Asset, error
 // ListAssets returns every asset, ordered by symbol.
 func (db *DB) ListAssets(ctx context.Context) ([]*domain.Asset, error) {
 	rows, err := db.QueryContext(ctx, `
-        SELECT symbol, name, type, currency, color, provider, provider_id
+        SELECT symbol, name, type, currency, color, provider, provider_id, logo_url
           FROM assets ORDER BY symbol`)
 	if err != nil {
 		return nil, fmt.Errorf("query assets: %w", err)
@@ -74,7 +75,7 @@ func (db *DB) ListAssets(ctx context.Context) ([]*domain.Asset, error) {
 			typ, cur string
 		)
 		if err := rows.Scan(&a.Symbol, &a.Name, &typ, &cur, &a.Color,
-			&a.Provider, &a.ProviderID); err != nil {
+			&a.Provider, &a.ProviderID, &a.LogoURL); err != nil {
 			return nil, fmt.Errorf("scan asset: %w", err)
 		}
 		a.Type = domain.AssetType(typ)

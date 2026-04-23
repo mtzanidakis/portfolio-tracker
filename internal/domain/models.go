@@ -40,8 +40,10 @@ type Account struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// Asset is a tradeable instrument identified by its ticker symbol. Cash
-// "assets" use the currency code as the symbol (e.g., "USD", "EUR").
+// Asset is a tradeable instrument identified by its ticker symbol.
+// Cash "assets" use "CASH-<CUR>" as their synthetic symbol. LogoURL is
+// the resolved provider logo (empty when no logo was found); cash types
+// leave it empty and are rendered with a currency-symbol badge instead.
 type Asset struct {
 	Symbol     string    `json:"symbol"`
 	Name       string    `json:"name"`
@@ -50,6 +52,7 @@ type Asset struct {
 	Color      string    `json:"color"`
 	Provider   string    `json:"provider"`
 	ProviderID string    `json:"provider_id"`
+	LogoURL    string    `json:"logo_url"`
 }
 
 // Transaction records a single buy or sell. Prices and fees are denominated

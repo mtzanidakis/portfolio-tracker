@@ -76,13 +76,16 @@ type FxRangeProvider interface {
 
 // SymbolInfo is provider-resolved metadata about a ticker / coin id.
 // Fields are best-effort: providers may leave some blank (e.g., Yahoo
-// doesn't classify cash; CoinGecko always returns USD + crypto).
+// doesn't classify cash; CoinGecko always returns USD + crypto). LogoURL
+// points at an external logo (Clearbit for stocks, CoinGecko CDN for
+// crypto); empty when nothing was resolvable.
 type SymbolInfo struct {
 	Symbol     string
 	Name       string
 	Currency   domain.Currency
 	AssetType  domain.AssetType
 	ProviderID string
+	LogoURL    string
 }
 
 // SymbolLookup resolves a user-typed symbol to provider metadata so the

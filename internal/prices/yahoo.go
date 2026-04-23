@@ -187,6 +187,11 @@ func (y *YahooProvider) Fetch(ctx context.Context, symbols []string) ([]PriceQuo
 // the same /v7/finance/quote endpoint used by Fetch. Returns nil when
 // Yahoo has no match (not an error — the caller may try another
 // provider). Name prefers longName and falls back to shortName.
+//
+// For stocks / ETFs the method also attempts a second call to
+// /v10/finance/quoteSummary to extract the company website, which is
+// then turned into a Clearbit logo URL. Logo resolution is best-effort:
+// a failure there does not fail the lookup.
 func (y *YahooProvider) LookupSymbol(ctx context.Context, symbol string) (*SymbolInfo, error) {
 	symbol = strings.TrimSpace(symbol)
 	if symbol == "" {
@@ -209,13 +214,66 @@ func (y *YahooProvider) LookupSymbol(ctx context.Context, symbol string) (*Symbo
 	if name == "" {
 		name = r.ShortName
 	}
-	return &SymbolInfo{
+	info := &SymbolInfo{
 		Symbol:     r.Symbol,
 		Name:       name,
 		Currency:   domain.Currency(strings.ToUpper(r.Currency)),
 		AssetType:  yahooQuoteTypeToAsset(r.QuoteType),
 		ProviderID: r.Symbol,
-	}, nil
+	}
+	if info.AssetType == domain.AssetStock || info.AssetType == domain.AssetETF {
+		info.LogoURL = y.fetchLogoURL(ctx, r.Symbol)
+	}
+	return info, nil
+}
+
+type yahooQuoteSummaryResponse struct {
+	QuoteSummary struct {
+		Result []struct {
+			AssetProfile struct {
+				Website string `json:"website"`
+			} `json:"assetProfile"`
+			SummaryProfile struct {
+				Website string `json:"website"`
+			} `json:"summaryProfile"`
+		} `json:"result"`
+	} `json:"quoteSummary"`
+}
+
+// fetchLogoURL turns a ticker into a logo URL by asking Yahoo for the
+// company website (via assetProfile/summaryProfile) and handing the
+// resulting hostname to Clearbit's free logo service. Returns "" on any
+// failure; the caller treats an empty URL as "no logo available".
+func (y *YahooProvider) fetchLogoURL(ctx context.Context, symbol string) string {
+	params := url.Values{"modules": {"assetProfile,summaryProfile"}}
+	body, err := y.authedGet(ctx, "/v10/finance/quoteSummary/"+url.PathEscape(symbol), params)
+	if err != nil {
+		return ""
+	}
+	var parsed yahooQuoteSummaryResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ""
+	}
+	if len(parsed.QuoteSummary.Result) == 0 {
+		return ""
+	}
+	site := parsed.QuoteSummary.Result[0].AssetProfile.Website
+	if site == "" {
+		site = parsed.QuoteSummary.Result[0].SummaryProfile.Website
+	}
+	if site == "" {
+		return ""
+	}
+	u, err := url.Parse(site)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return ""
+	}
+	host = strings.TrimPrefix(host, "www.")
+	return "https://logo.clearbit.com/" + host
 }
 
 // yahooQuoteTypeToAsset maps Yahoo's quoteType enum to our AssetType.

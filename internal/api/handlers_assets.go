@@ -50,6 +50,7 @@ type assetRequest struct {
 	Color      string           `json:"color"`
 	Provider   string           `json:"provider"`
 	ProviderID string           `json:"provider_id"`
+	LogoURL    string           `json:"logo_url"`
 }
 
 func upsertAssetHandler(d *db.DB) http.HandlerFunc {
@@ -79,6 +80,7 @@ func upsertAssetHandler(d *db.DB) http.HandlerFunc {
 			Color:      req.Color,
 			Provider:   req.Provider,
 			ProviderID: req.ProviderID,
+			LogoURL:    req.LogoURL,
 		}
 		if err := d.UpsertAsset(r.Context(), a); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -95,6 +97,7 @@ type assetLookupResponse struct {
 	Type       string `json:"type,omitempty"`
 	Provider   string `json:"provider"`
 	ProviderID string `json:"provider_id,omitempty"`
+	LogoURL    string `json:"logo_url,omitempty"`
 }
 
 // lookupAssetHandler resolves a user-typed symbol via the given
@@ -143,6 +146,7 @@ func lookupAssetHandler(yahoo, coingecko prices.SymbolLookup) http.HandlerFunc {
 			Type:       string(info.AssetType),
 			Provider:   provider,
 			ProviderID: info.ProviderID,
+			LogoURL:    info.LogoURL,
 		})
 	}
 }

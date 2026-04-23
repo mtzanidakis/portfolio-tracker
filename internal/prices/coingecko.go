@@ -101,6 +101,8 @@ type coingeckoSearchResponse struct {
 		Name          string `json:"name"`
 		Symbol        string `json:"symbol"`
 		MarketCapRank int    `json:"market_cap_rank"`
+		Large         string `json:"large"`
+		Thumb         string `json:"thumb"`
 	} `json:"coins"`
 }
 
@@ -148,12 +150,17 @@ func (c *CoinGeckoProvider) LookupSymbol(ctx context.Context, symbol string) (*S
 		}
 		if best == nil || rank < bestRank {
 			bestRank = rank
+			logo := coin.Large
+			if logo == "" {
+				logo = coin.Thumb
+			}
 			best = &SymbolInfo{
 				Symbol:     strings.ToUpper(coin.Symbol),
 				Name:       coin.Name,
 				Currency:   domain.USD,
 				AssetType:  domain.AssetCrypto,
 				ProviderID: coin.ID,
+				LogoURL:    logo,
 			}
 		}
 	}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
+import { AssetLogo } from './AssetLogo.jsx';
 import { TxModal } from './TxModal.jsx';
 import { fmtMoney, fmtNum, fmtDate } from '../format.js';
 import { api } from '../api.js';
@@ -131,11 +132,11 @@ export function ActivitiesPage({ privacy, currency, user }) {
                   <td><span class={`pill ${tx.side}`}>{tx.side === 'buy' ? 'Buy' : 'Sell'}</span></td>
                   <td>
                     <div class="ticker">
-                      <div class="ticker-icon" style={{ background: asset?.color || '#999', width: 26, height: 26, fontSize: 10 }}>
-                        {tx.asset_symbol.slice(0, 2)}
-                      </div>
+                      <AssetLogo asset={asset || { symbol: tx.asset_symbol }} size={26} />
                       <div class="ticker-meta">
-                        <div class="ticker-sym" style={{ fontSize: 13 }}>{tx.asset_symbol}</div>
+                        <div class="ticker-sym" style={{ fontSize: 13 }}>
+                          {asset?.type === 'cash' ? asset.currency : tx.asset_symbol}
+                        </div>
                         <div class="ticker-name">{asset?.name || ''}</div>
                       </div>
                     </div>

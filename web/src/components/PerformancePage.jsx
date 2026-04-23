@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
+import { AssetLogo } from './AssetLogo.jsx';
 import { PerformanceChart } from './Chart.jsx';
 import { fmtMoney, fmtPct } from '../format.js';
 import { api } from '../api.js';
@@ -10,21 +11,23 @@ export function PerformancePage({ privacy, currency }) {
   const [tf, setTf] = useState('6M');
   const [perf, setPerf] = useState(null);
   const [holdings, setHoldings] = useState([]);
+  const [assets, setAssets] = useState([]);
   const [err, setErr] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadPerf = (t) => api.performance(t).then(setPerf).catch(e => setErr(e.message));
   const loadHoldings = () => api.holdings().then(setHoldings).catch(e => setErr(e.message));
+  const loadAssets = () => api.assets().then(a => setAssets(a || [])).catch(e => setErr(e.message));
 
   useEffect(() => { setErr(null); loadPerf(tf); }, [tf]);
-  useEffect(() => { loadHoldings(); }, []);
+  useEffect(() => { loadHoldings(); loadAssets(); }, []);
 
   const refresh = async () => {
     setRefreshing(true);
     setErr(null);
     try {
       await api.refreshPrices();
-      await Promise.all([loadPerf(tf), loadHoldings()]);
+      await Promise.all([loadPerf(tf), loadHoldings(), loadAssets()]);
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -35,6 +38,7 @@ export function PerformancePage({ privacy, currency }) {
   if (err) return <div class="empty">Error: {err}</div>;
   if (!perf) return <div class="empty">Loading…</div>;
 
+  const assetMap = Object.fromEntries((assets || []).map(a => [a.symbol, a]));
   const movers = [...(holdings || [])]
     .filter(h => h.Qty > 0)
     .sort((a, b) => (b.PnLPctBase || 0) - (a.PnLPctBase || 0));
@@ -128,10 +132,12 @@ export function PerformancePage({ privacy, currency }) {
               <tr key={h.Symbol}>
                 <td>
                   <div class="ticker">
-                    <div class="ticker-icon" style={{ background: 'var(--terra)' }}>{h.Symbol.slice(0, 2)}</div>
+                    <AssetLogo asset={assetMap[h.Symbol] || { symbol: h.Symbol, currency: h.Currency }} size={32} />
                     <div class="ticker-meta">
-                      <div class="ticker-sym">{h.Symbol}</div>
-                      <div class="ticker-name">{h.Currency}</div>
+                      <div class="ticker-sym">
+                        {assetMap[h.Symbol]?.type === 'cash' ? h.Currency : h.Symbol}
+                      </div>
+                      <div class="ticker-name">{assetMap[h.Symbol]?.name || h.Currency}</div>
                     </div>
                   </div>
                 </td>

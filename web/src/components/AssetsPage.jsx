@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
+import { AssetLogo } from './AssetLogo.jsx';
 import { AssetModal } from './AssetModal.jsx';
 import { api } from '../api.js';
 
@@ -79,11 +80,9 @@ export function AssetsPage() {
             <tr key={a.symbol}>
               <td>
                 <div class="ticker">
-                  <div class="ticker-icon" style={{ background: a.color || '#999', width: 26, height: 26, fontSize: 10 }}>
-                    {a.symbol.slice(0, 2)}
-                  </div>
+                  <AssetLogo asset={a} size={26} />
                   <div class="ticker-meta">
-                    <div class="ticker-sym" style={{ fontSize: 13 }}>{a.symbol}</div>
+                    <div class="ticker-sym" style={{ fontSize: 13 }}>{a.type === 'cash' ? a.currency : a.symbol}</div>
                   </div>
                 </div>
               </td>
