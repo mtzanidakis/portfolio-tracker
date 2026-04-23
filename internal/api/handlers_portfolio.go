@@ -316,7 +316,22 @@ func buildSeries(
 			snapByAsset[s] = snaps
 		}
 	}
+	// Cash assets trade 1:1 in their native currency, so they have no
+	// price snapshots. Mark them up front so priceAt can short-circuit
+	// — otherwise the chart would spike on every deposit day (the
+	// tx-day anchor sets value = cost) and then collapse the next day
+	// because priceAt returned ok=false and we skipped the holding.
+	assetRows, _ := d.ListAssets(ctx)
+	isCash := map[string]bool{}
+	for _, a := range assetRows {
+		if a.Type == domain.AssetCash {
+			isCash[a.Symbol] = true
+		}
+	}
 	priceAt := func(symbol string, at time.Time) (float64, bool) {
+		if isCash[symbol] {
+			return 1.0, true
+		}
 		snaps := snapByAsset[symbol]
 		if len(snaps) == 0 {
 			return 0, false
