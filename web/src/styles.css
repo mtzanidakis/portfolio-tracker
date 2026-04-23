@@ -677,6 +677,9 @@ input, select, textarea {
 }
 .pill.buy { background: var(--pos-wash); color: var(--pos); }
 .pill.sell { background: var(--neg-wash); color: var(--neg); }
+.pill.deposit { background: var(--pos-wash); color: var(--pos); }
+.pill.withdraw { background: var(--neg-wash); color: var(--neg); }
+.pill.interest { background: color-mix(in srgb, var(--ochre) 18%, transparent); color: var(--ochre); }
 .pill.stock { background: color-mix(in srgb, var(--ochre) 18%, transparent); color: var(--ochre); }
 .pill.crypto { background: color-mix(in srgb, var(--terra) 18%, transparent); color: var(--terra); }
 
@@ -870,8 +873,11 @@ html[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,0.55); }
   color: var(--text);
   box-shadow: var(--shadow-sm);
 }
-.seg button.active.buy { color: var(--pos); }
-.seg button.active.sell { color: var(--neg); }
+.seg button.active.buy,
+.seg button.active.deposit { color: var(--pos); }
+.seg button.active.sell,
+.seg button.active.withdraw { color: var(--neg); }
+.seg button.active.interest { color: var(--ochre); }
 
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 

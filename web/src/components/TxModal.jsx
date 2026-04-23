@@ -3,9 +3,18 @@ import { Icon } from './Icons.jsx';
 import { fmtMoney } from '../format.js';
 import { api } from '../api.js';
 
+const CASH_SIDES = ['deposit', 'withdraw', 'interest'];
+const ASSET_SIDES = ['buy', 'sell'];
+const SIDE_LABEL = {
+  buy: 'Buy', sell: 'Sell',
+  deposit: 'Deposit', withdraw: 'Withdraw', interest: 'Interest',
+};
+
 // Modal for creating or editing a transaction. Pass `transaction` to
 // enter edit mode. User is required so we know the base currency for
-// the FX conversion step.
+// the FX conversion step. The modal adapts to the selected asset's
+// type — cash assets get deposit/withdraw/interest with price fixed at
+// 1, everything else keeps the traditional buy/sell with quantity×price.
 export function TxModal({ transaction, user, onClose, onSaved }) {
   const editing = !!transaction;
 
@@ -33,10 +42,9 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
 
   useEffect(() => {
     Promise.all([api.assets(), api.accounts()]).then(([a, accs]) => {
-      const nonCash = (a || []).filter(x => x.type !== 'cash');
-      setAssets(nonCash);
+      setAssets(a || []);
       setAccounts(accs || []);
-      if (!sym && nonCash.length) setSym(nonCash[0].symbol);
+      if (!sym && a?.length) setSym(a[0].symbol);
       if (!accountId && accs?.length) setAccountId(accs[0].id);
     }).catch(e => setError(e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -46,6 +54,26 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
   const accountCurrency = account?.currency || 'USD';
   const baseCurrency = user?.base_currency || 'USD';
   const needsFx = accountCurrency !== baseCurrency;
+
+  const selectedAsset = assets.find(a => a.symbol === sym);
+  const isCash = selectedAsset?.type === 'cash';
+  const sideOptions = isCash ? CASH_SIDES : ASSET_SIDES;
+
+  // Keep the side in sync with the selected asset's type so we don't
+  // submit buy-on-cash or deposit-on-stock. When the set of valid sides
+  // changes, snap to the first option unless the current one is still
+  // valid.
+  useEffect(() => {
+    if (!selectedAsset) return;
+    if (!sideOptions.includes(side)) setSide(sideOptions[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCash, selectedAsset?.symbol]);
+
+  // For cash sides price is always 1 (cash trades 1:1 in its own
+  // currency). Force the field so the payload round-trips cleanly.
+  useEffect(() => {
+    if (isCash) setPrice('1');
+  }, [isCash]);
 
   // Auto-calculate fx_to_base whenever account / base / date changes.
   // Skipped when not needed (same currency) or when the user has
@@ -65,11 +93,15 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
     return () => { cancelled = true; };
   }, [accountCurrency, baseCurrency, date, needsFx, fxAuto]);
 
-  const total = (parseFloat(qty) || 0) * (parseFloat(price) || 0);
+  const amountCurrency = isCash ? (selectedAsset?.currency || accountCurrency) : accountCurrency;
+  const total = isCash
+    ? (parseFloat(qty) || 0)
+    : (parseFloat(qty) || 0) * (parseFloat(price) || 0);
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!sym || !accountId || !qty || !price) return;
+    if (!sym || !accountId || !qty) return;
+    if (!isCash && !price) return;
     setSubmitting(true);
     setError('');
     try {
@@ -78,7 +110,7 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
         asset_symbol: sym,
         side,
         qty: parseFloat(qty),
-        price: parseFloat(price),
+        price: isCash ? 1 : parseFloat(price),
         fee: parseFloat(fee) || 0,
         fx_to_base: needsFx ? (parseFloat(fxToBase) || 1) : 1,
         occurred_at: new Date(date + 'T12:00:00Z').toISOString(),
@@ -98,6 +130,10 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
     }
   };
 
+  const submitLabel = editing
+    ? 'Save changes'
+    : `Record ${SIDE_LABEL[side]?.toLowerCase() || side}`;
+
   return (
     <div class="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
       <form class="modal" onSubmit={submit}>
@@ -105,15 +141,24 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
           <div>
             <h2 class="modal-title">{editing ? 'Edit transaction' : 'Add transaction'}</h2>
             <div class="modal-sub">
-              {editing ? 'Change any field and save.' : 'Record a buy or sell manually.'}
+              {editing
+                ? 'Change any field and save.'
+                : isCash
+                ? 'Deposit, withdraw, or record interest on a cash balance.'
+                : 'Record a buy or sell manually.'}
             </div>
           </div>
           <button type="button" class="icon-btn" onClick={onClose}><Icon name="close" /></button>
         </div>
 
         <div class="seg" style={{ marginBottom: 14 }}>
-          <button type="button" class={side === 'buy' ? 'active buy' : ''} onClick={() => setSide('buy')}>Buy</button>
-          <button type="button" class={side === 'sell' ? 'active sell' : ''} onClick={() => setSide('sell')}>Sell</button>
+          {sideOptions.map(s => (
+            <button key={s} type="button"
+              class={side === s ? `active ${s}` : ''}
+              onClick={() => setSide(s)}>
+              {SIDE_LABEL[s]}
+            </button>
+          ))}
         </div>
 
         <div class="row-2">
@@ -128,31 +173,45 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
           <div class="field">
             <label>Asset</label>
             <select class="select" value={sym} onChange={e => setSym(e.currentTarget.value)}>
-              {assets.map(a => <option key={a.symbol} value={a.symbol}>{a.symbol} — {a.name}</option>)}
+              {assets.map(a => (
+                <option key={a.symbol} value={a.symbol}>
+                  {a.type === 'cash' ? `${a.currency} Cash` : `${a.symbol} — ${a.name}`}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
         <div class="row-2">
           <div class="field">
-            <label>Quantity</label>
+            <label>{isCash ? `Amount (${amountCurrency})` : 'Quantity'}</label>
             <input class="input mono" type="number" step="any" placeholder="0.00"
               value={qty} onInput={e => setQty(e.currentTarget.value)} autoFocus />
           </div>
-          <div class="field">
-            <label>Price per unit ({accountCurrency})</label>
-            <input class="input mono" type="number" step="any" placeholder="0.00"
-              value={price} onInput={e => setPrice(e.currentTarget.value)} />
-          </div>
+          {!isCash && (
+            <div class="field">
+              <label>Price per unit ({accountCurrency})</label>
+              <input class="input mono" type="number" step="any" placeholder="0.00"
+                value={price} onInput={e => setPrice(e.currentTarget.value)} />
+            </div>
+          )}
+          {isCash && (
+            <div class="field">
+              <label>Date</label>
+              <input class="input mono" type="date" value={date} onInput={e => setDate(e.currentTarget.value)} />
+            </div>
+          )}
         </div>
 
         <div class="row-2">
+          {!isCash && (
+            <div class="field">
+              <label>Date</label>
+              <input class="input mono" type="date" value={date} onInput={e => setDate(e.currentTarget.value)} />
+            </div>
+          )}
           <div class="field">
-            <label>Date</label>
-            <input class="input mono" type="date" value={date} onInput={e => setDate(e.currentTarget.value)} />
-          </div>
-          <div class="field">
-            <label>Fee ({accountCurrency})</label>
+            <label>Fee ({amountCurrency})</label>
             <input class="input mono" type="number" step="any" value={fee}
               onInput={e => setFee(e.currentTarget.value)} />
           </div>
@@ -191,13 +250,17 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
           <div>
             <div style={{ fontSize: 11, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total</div>
             <div class="mono" style={{ fontSize: 20, fontWeight: 500, marginTop: 2 }}>
-              {fmtMoney(total, accountCurrency)}
+              {fmtMoney(total, amountCurrency)}
             </div>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'right' }}>
-            {qty && price
-              ? `${qty} ${sym} @ ${fmtMoney(parseFloat(price), accountCurrency)}`
-              : 'Enter quantity & price'}
+            {isCash
+              ? (qty
+                  ? `${SIDE_LABEL[side]} ${fmtMoney(parseFloat(qty), amountCurrency)}`
+                  : 'Enter amount')
+              : (qty && price
+                  ? `${qty} ${sym} @ ${fmtMoney(parseFloat(price), accountCurrency)}`
+                  : 'Enter quantity & price')}
           </div>
         </div>
 
@@ -205,12 +268,10 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
 
         <div class="modal-actions">
           <button type="button" class="btn" onClick={onClose}>Cancel</button>
-          <button type="submit" class="btn primary" disabled={!qty || !price || submitting}>
+          <button type="submit" class="btn primary"
+            disabled={!qty || (!isCash && !price) || submitting}>
             <Icon name="check" />
-            {submitting
-              ? 'Saving…'
-              : editing ? 'Save changes'
-              : side === 'buy' ? 'Record buy' : 'Record sell'}
+            {submitting ? 'Saving…' : submitLabel}
           </button>
         </div>
       </form>
