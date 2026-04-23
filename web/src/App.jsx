@@ -31,6 +31,7 @@ export function App() {
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [tokensOpen, setTokensOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => { localStorage.setItem('pt-page', page); }, [page]);
@@ -95,12 +96,15 @@ export function App() {
     <div class="app" data-screen-label={page}>
       <Sidebar
         page={page} setPage={setPage} user={user}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
         onProfile={() => setProfileOpen(true)}
         onTokens={() => setTokensOpen(true)}
         onSignOut={signOut}
       />
       <main class="main">
-        <Topbar title={TITLES[page].t} sub={TITLES[page].s} actions={topActions} />
+        <Topbar title={TITLES[page].t} sub={TITLES[page].s} actions={topActions}
+          onMenuClick={() => setSidebarOpen(true)} />
         <div class="content">
           {page === 'performance' && <PerformancePage {...pageProps} />}
           {page === 'allocations' && <AllocationsPage {...pageProps} />}
