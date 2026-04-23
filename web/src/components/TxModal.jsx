@@ -75,6 +75,24 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
     if (isCash) setPrice('1');
   }, [isCash]);
 
+  // When the user picks a cash/savings account, default the asset to
+  // the CASH-<currency> row that matches the account — that's almost
+  // always what they want, and saves a second dropdown trip. We only
+  // auto-pick for new transactions; editing preserves the stored value.
+  useEffect(() => {
+    if (editing) return;
+    if (!accountId || !accounts.length || !assets.length) return;
+    const acc = accounts.find(a => a.id === accountId);
+    if (!acc) return;
+    const t = (acc.type || '').toLowerCase();
+    const isCashAccount = t.includes('cash') || t.includes('saving');
+    if (!isCashAccount) return;
+    const cashSymbol = `CASH-${acc.currency}`;
+    if (assets.some(x => x.symbol === cashSymbol)) {
+      setSym(cashSymbol);
+    }
+  }, [accountId, accounts, assets, editing]);
+
   // Auto-calculate fx_to_base whenever account / base / date changes.
   // Skipped when not needed (same currency) or when the user has
   // toggled auto off.
