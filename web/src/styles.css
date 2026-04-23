@@ -1066,10 +1066,81 @@ html[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,0.55); }
     padding: 20px;
   }
 
-  /* Tables keep their natural layout but scroll horizontally inside
-   * their card so wide content (Activities, Assets) is reachable. */
-  .card:has(> .table) { overflow-x: auto; }
-  .card > .table { min-width: 640px; }
+  /* Tables turn into stacked cards on mobile instead of forcing a
+   * horizontal scrollbar. Each <tr> becomes a bordered card: the cell
+   * marked data-primary sits at the top with [data-actions] floated
+   * top-right, and every [data-label] cell renders as a flex row
+   * (label on the left via ::before, value on the right). */
+  .card > .table,
+  .card > .table thead,
+  .card > .table tbody,
+  .card > .table tr,
+  .card > .table th,
+  .card > .table td {
+    display: block;
+    width: auto;
+  }
+  .card > .table thead { display: none; }
+  .card > .table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .card > .table tr {
+    position: relative;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+  }
+  .card > .table tr:hover td { background: transparent; }
+  .card > .table td {
+    padding: 4px 0;
+    border: none !important;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    text-align: right;
+    font-size: 13px;
+  }
+  .card > .table td[data-label]::before {
+    content: attr(data-label);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    font-weight: 500;
+    text-align: left;
+    flex-shrink: 0;
+  }
+  /* Primary cell — no label, header-like, leaves room for the actions
+   * floated to the top-right. */
+  .card > .table td[data-primary] {
+    display: block;
+    text-align: left;
+    padding: 0 72px 10px 0;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border) !important;
+  }
+  .card > .table td[data-actions] {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 0;
+    justify-content: flex-end;
+  }
+  /* Empty-state row (colspan) — keep it plain text, no card chrome. */
+  .card > .table td.empty {
+    display: block;
+    text-align: center;
+    padding: 24px;
+  }
+  .card > .table tr:has(> td.empty) {
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
 }
 
 @media (max-width: 520px) {

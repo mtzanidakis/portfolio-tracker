@@ -130,7 +130,7 @@ export function PerformancePage({ privacy, currency }) {
             )}
             {movers.map(h => (
               <tr key={h.Symbol}>
-                <td>
+                <td data-primary>
                   <div class="ticker">
                     <AssetLogo asset={assetMap[h.Symbol] || { symbol: h.Symbol, currency: h.Currency }} size={32} />
                     <div class="ticker-meta">
@@ -141,7 +141,7 @@ export function PerformancePage({ privacy, currency }) {
                     </div>
                   </div>
                 </td>
-                <td class="num" style={{ textAlign: 'right' }}>
+                <td class="num" data-label="Value" style={{ textAlign: 'right' }}>
                   {privacy ? <span class="masked">{fmtMoney(h.ValueBase, currency)}</span> : fmtMoney(h.ValueBase, currency)}
                   {h.PriceStale && (
                     <span title="Price data unavailable; valued at cost" style={{ marginLeft: 6, color: 'var(--neg)' }}>
@@ -149,13 +149,13 @@ export function PerformancePage({ privacy, currency }) {
                     </span>
                   )}
                 </td>
-                <td class="num" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
+                <td class="num" data-label="Cost basis" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
                   {privacy ? <span class="masked">{fmtMoney(h.CostBase, currency)}</span> : fmtMoney(h.CostBase, currency)}
                 </td>
-                <td class="num" style={{ textAlign: 'right', color: h.PnLBase >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+                <td class="num" data-label="PnL" style={{ textAlign: 'right', color: h.PnLBase >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
                   {privacy ? <span class="masked">{fmtMoney(h.PnLBase, currency, { sign: true })}</span> : fmtMoney(h.PnLBase, currency, { sign: true })}
                 </td>
-                <td class="num" style={{ textAlign: 'right', color: h.PnLBase >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+                <td class="num" data-label="Return" style={{ textAlign: 'right', color: h.PnLBase >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
                   {fmtPct(h.PnLPctBase)}
                 </td>
               </tr>

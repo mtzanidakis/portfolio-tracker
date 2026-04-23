@@ -161,11 +161,11 @@ export function ActivitiesPage({ privacy, currency, user }) {
               const rowCur = isCashTx ? (asset?.currency || accCur) : accCur;
               return (
                 <tr key={tx.id}>
-                  <td class="mono" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                  <td class="mono" data-label="Date" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
                     {fmtDate(tx.occurred_at, { year: '2-digit', month: 'short', day: '2-digit' })}
                   </td>
-                  <td><span class={`pill ${tx.side}`}>{SIDE_LABEL[tx.side] || tx.side}</span></td>
-                  <td>
+                  <td data-label="Side"><span class={`pill ${tx.side}`}>{SIDE_LABEL[tx.side] || tx.side}</span></td>
+                  <td data-primary>
                     <div class="ticker">
                       <AssetLogo asset={asset || { symbol: tx.asset_symbol }} size={26} />
                       <div class="ticker-meta">
@@ -176,18 +176,18 @@ export function ActivitiesPage({ privacy, currency, user }) {
                       </div>
                     </div>
                   </td>
-                  <td class="num" style={{ textAlign: 'right' }}>
+                  <td class="num" data-label="Quantity" style={{ textAlign: 'right' }}>
                     {isCashTx ? fmtMoney(tx.qty, rowCur) : fmtNum(tx.qty, 4)}
                   </td>
-                  <td class="num" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
+                  <td class="num" data-label="Price" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
                     {isCashTx ? '—' : fmtMoney(tx.price, accCur)}
                   </td>
-                  <td class="num" style={{ textAlign: 'right' }}>
+                  <td class="num" data-label="Total" style={{ textAlign: 'right' }}>
                     {privacy ? <span class="masked">{fmtMoney(total, rowCur)}</span> : fmtMoney(total, rowCur)}
                   </td>
-                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{acc?.name}</td>
-                  <td style={{ fontSize: 12, color: 'var(--text-faint)' }}>{tx.note || '—'}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <td data-label="Account" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{acc?.name}</td>
+                  <td data-label="Note" style={{ fontSize: 12, color: 'var(--text-faint)' }}>{tx.note || '—'}</td>
+                  <td data-actions style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <button class="icon-btn" title="Edit" onClick={() => setEditTx(tx)}>
                       <Icon name="edit" />
                     </button>

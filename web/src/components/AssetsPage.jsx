@@ -78,7 +78,7 @@ export function AssetsPage() {
           )}
           {filtered.map(a => (
             <tr key={a.symbol}>
-              <td>
+              <td data-primary>
                 <div class="ticker">
                   <AssetLogo asset={a} size={26} />
                   <div class="ticker-meta">
@@ -86,15 +86,15 @@ export function AssetsPage() {
                   </div>
                 </div>
               </td>
-              <td style={{ fontSize: 13 }}>{a.name}</td>
-              <td><span class={`pill ${a.type}`}>{TYPE_LABEL[a.type] || a.type}</span></td>
-              <td class="mono" style={{ fontSize: 13 }}>{a.currency}</td>
-              <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              <td data-label="Name" style={{ fontSize: 13 }}>{a.name}</td>
+              <td data-label="Type"><span class={`pill ${a.type}`}>{TYPE_LABEL[a.type] || a.type}</span></td>
+              <td class="mono" data-label="Currency" style={{ fontSize: 13 }}>{a.currency}</td>
+              <td data-label="Provider" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 {a.provider
                   ? <>{a.provider}{a.provider_id ? ` · ${a.provider_id}` : ''}</>
                   : '—'}
               </td>
-              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+              <td data-actions style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                 <button class="icon-btn" title="Edit" onClick={() => setModalAsset(a)}>
                   <Icon name="edit" />
                 </button>
