@@ -72,8 +72,9 @@ func (db *DB) GetTransaction(ctx context.Context, id int64) (*domain.Transaction
 }
 
 // ListTransactions returns transactions matching f, ordered newest first.
-// A LEFT JOIN on assets is added only when a free-text filter is active,
-// because the asset's name isn't stored on the tx row itself.
+// Free-text search routes through the tx_fts virtual table so symbol,
+// the asset's display name and the tx note are indexed together with
+// unicode-aware tokenisation (no LIKE scan, no LEFT JOIN).
 func (db *DB) ListTransactions(ctx context.Context, f TxFilter) ([]*domain.Transaction, error) {
 	var (
 		conds []string
@@ -111,12 +112,14 @@ func (db *DB) ListTransactions(ctx context.Context, f TxFilter) ([]*domain.Trans
 		args = append(args, f.To)
 	}
 	if f.Q != "" {
-		needle := "%" + f.Q + "%"
-		conds = append(conds,
-			"(t.asset_symbol LIKE ? COLLATE NOCASE"+
-				" OR a.name LIKE ? COLLATE NOCASE"+
-				" OR t.note LIKE ? COLLATE NOCASE)")
-		args = append(args, needle, needle, needle)
+		if pat := ftsPattern(f.Q); pat != "" {
+			conds = append(conds, "t.id IN (SELECT rowid FROM tx_fts WHERE tx_fts MATCH ?)")
+			args = append(args, pat)
+		} else {
+			// After stripping FTS-special chars the query collapses to
+			// nothing — return an empty result instead of matching all.
+			conds = append(conds, "1 = 0")
+		}
 	}
 	// Keyset cursor — only applied when both fields are set. The
 	// tuple comparison keeps us aligned with the ORDER BY so rows on
@@ -127,14 +130,9 @@ func (db *DB) ListTransactions(ctx context.Context, f TxFilter) ([]*domain.Trans
 		args = append(args, f.CursorOccurredAt, f.CursorOccurredAt, f.CursorID)
 	}
 
-	from := "transactions t"
-	if f.Q != "" {
-		from += " LEFT JOIN assets a ON a.symbol = t.asset_symbol"
-	}
-
 	q := `SELECT t.id, t.user_id, t.account_id, t.asset_symbol, t.side, t.qty, t.price, t.fee,
 	             t.fx_to_base, t.occurred_at, t.note, t.created_at
-	        FROM ` + from
+	        FROM transactions t`
 	if len(conds) > 0 {
 		q += " WHERE " + strings.Join(conds, " AND ")
 	}

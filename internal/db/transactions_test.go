@@ -115,3 +115,79 @@ func TestListTransactions_Filters(t *testing.T) {
 		t.Errorf("from-filter: %+v", feb)
 	}
 }
+
+func TestListTransactions_FreeTextSearch(t *testing.T) {
+	db := newTestDB(t)
+	ctx := t.Context()
+
+	u := mustCreateUser(t, db, "fts@test.io")
+	acc := mustCreateAccount(t, db, u.ID, domain.USD)
+	mustCreateAsset(t, db, "AAPL", domain.AssetStock, domain.USD)
+	mustCreateAsset(t, db, "BTC", domain.AssetCrypto, domain.USD)
+	// Assets created via mustCreateAsset don't carry a name; patch the
+	// names directly so the FTS triggers have something to index.
+	if _, err := db.ExecContext(ctx,
+		`UPDATE assets SET name = 'Apple Inc.'  WHERE symbol = 'AAPL'`); err != nil {
+		t.Fatalf("patch name: %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`UPDATE assets SET name = 'Bitcoin'     WHERE symbol = 'BTC'`); err != nil {
+		t.Fatalf("patch name: %v", err)
+	}
+
+	mustTx := func(sym string, note string, at string) {
+		t.Helper()
+		err := db.CreateTransaction(ctx, &domain.Transaction{
+			UserID: u.ID, AccountID: acc.ID, AssetSymbol: sym,
+			Side: domain.SideBuy, Qty: 1, Price: 100, FxToBase: 1,
+			OccurredAt: mustTime(t, at), Note: note,
+		})
+		if err != nil {
+			t.Fatalf("seed tx: %v", err)
+		}
+	}
+	mustTx("AAPL", "monthly DCA", "2026-01-01T00:00:00Z")
+	mustTx("BTC", "stacking sats", "2026-02-01T00:00:00Z")
+
+	// Symbol match.
+	got, _ := db.ListTransactions(ctx, TxFilter{UserID: u.ID, Q: "aapl"})
+	if len(got) != 1 || got[0].AssetSymbol != "AAPL" {
+		t.Errorf("symbol match: %+v", got)
+	}
+
+	// Name match (via the trigger-synced denormalised copy).
+	got, _ = db.ListTransactions(ctx, TxFilter{UserID: u.ID, Q: "bitcoin"})
+	if len(got) != 1 || got[0].AssetSymbol != "BTC" {
+		t.Errorf("name match: %+v", got)
+	}
+
+	// Note match.
+	got, _ = db.ListTransactions(ctx, TxFilter{UserID: u.ID, Q: "sats"})
+	if len(got) != 1 || got[0].Note != "stacking sats" {
+		t.Errorf("note match: %+v", got)
+	}
+
+	// Prefix — "app" finds "Apple".
+	got, _ = db.ListTransactions(ctx, TxFilter{UserID: u.ID, Q: "app"})
+	if len(got) != 1 || got[0].AssetSymbol != "AAPL" {
+		t.Errorf("prefix match: %+v", got)
+	}
+
+	// Query that only contains FTS-special chars collapses to nothing
+	// and returns zero rows (not "everything").
+	got, _ = db.ListTransactions(ctx, TxFilter{UserID: u.ID, Q: `"*()`})
+	if len(got) != 0 {
+		t.Errorf("sanitised-empty query should match nothing, got %d", len(got))
+	}
+
+	// Asset name update propagates to tx_fts so existing rows become
+	// searchable by the new name.
+	if _, err := db.ExecContext(ctx,
+		`UPDATE assets SET name = 'Apfel Inc.' WHERE symbol = 'AAPL'`); err != nil {
+		t.Fatalf("rename asset: %v", err)
+	}
+	got, _ = db.ListTransactions(ctx, TxFilter{UserID: u.ID, Q: "apfel"})
+	if len(got) != 1 || got[0].AssetSymbol != "AAPL" {
+		t.Errorf("name-update propagation: %+v", got)
+	}
+}
