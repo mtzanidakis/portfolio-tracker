@@ -29,6 +29,11 @@ export function AssetModal({ asset, onClose, onSaved }) {
   const [submitting, setSubmitting] = useState(false);
   const [looking, setLooking] = useState(false);
 
+  // Cash is just a balance in a currency — no ticker, no external price
+  // source. The symbol/name are derived from the currency so the DB row
+  // keeps a unique key without asking the user for one.
+  const isCash = type === 'cash';
+
   // Debounced provider lookup: whenever symbol or provider changes the
   // form re-queries and auto-fills name / currency / type / provider-id.
   // On mount for an existing asset we suppress the initial fire so the
@@ -41,6 +46,10 @@ export function AssetModal({ asset, onClose, onSaved }) {
     const isFirst = firstRun.current;
     firstRun.current = false;
     if (isFirst && editing) return;
+    if (isCash) {
+      setLooking(false);
+      return;
+    }
 
     const sym = symbol.trim();
     if (!sym || !provider) {
@@ -64,26 +73,36 @@ export function AssetModal({ asset, onClose, onSaved }) {
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [symbol, provider, editing]);
+  }, [symbol, provider, editing, isCash]);
 
   const submit = async (e) => {
     e.preventDefault();
     setErr('');
-    if (!symbol.trim() || !name.trim()) {
+    if (!isCash && (!symbol.trim() || !name.trim())) {
       setErr('Symbol and name are required.');
       return;
     }
     setSubmitting(true);
     try {
-      const payload = {
-        symbol: symbol.trim().toUpperCase(),
-        name: name.trim(),
-        type,
-        currency,
-        color,
-        provider,
-        provider_id: providerID.trim(),
-      };
+      const payload = isCash
+        ? {
+            symbol: `CASH-${currency}`,
+            name: `${currency} Cash`,
+            type,
+            currency,
+            color,
+            provider: '',
+            provider_id: '',
+          }
+        : {
+            symbol: symbol.trim().toUpperCase(),
+            name: name.trim(),
+            type,
+            currency,
+            color,
+            provider,
+            provider_id: providerID.trim(),
+          };
       // POST is upsert, so we use it for both create and edit.
       const saved = await api.upsertAsset(payload);
       onSaved(saved);
@@ -116,23 +135,6 @@ export function AssetModal({ asset, onClose, onSaved }) {
 
         <div class="row-2">
           <div class="field">
-            <label>Symbol</label>
-            <input class="input mono" autoFocus
-              placeholder="AAPL, BTC, VOO"
-              value={symbol}
-              disabled={editing}
-              onInput={e => setSymbol(e.currentTarget.value.toUpperCase())} />
-          </div>
-          <div class="field">
-            <label>Name {looking && <span style={{ fontSize: 11, color: 'var(--muted)' }}>· looking up…</span>}</label>
-            <input class="input"
-              placeholder="Apple Inc."
-              value={name} onInput={e => setName(e.currentTarget.value)} />
-          </div>
-        </div>
-
-        <div class="row-2">
-          <div class="field">
             <label>Type</label>
             <select class="select" value={type} onChange={e => setType(e.currentTarget.value)}>
               {TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -140,27 +142,48 @@ export function AssetModal({ asset, onClose, onSaved }) {
           </div>
           <div class="field">
             <label>Native currency</label>
-            <select class="select" value={currency} onChange={e => setCurrency(e.currentTarget.value)}>
+            <select class="select" value={currency} onChange={e => setCurrency(e.currentTarget.value)} disabled={editing && isCash}>
               {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
         </div>
 
-        <div class="row-2">
-          <div class="field">
-            <label>Provider</label>
-            <select class="select" value={provider} onChange={e => setProvider(e.currentTarget.value)}>
-              {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
+        {!isCash && (
+          <div class="row-2">
+            <div class="field">
+              <label>Symbol</label>
+              <input class="input mono" autoFocus
+                placeholder="AAPL, BTC, VOO"
+                value={symbol}
+                disabled={editing}
+                onInput={e => setSymbol(e.currentTarget.value.toUpperCase())} />
+            </div>
+            <div class="field">
+              <label>Name {looking && <span style={{ fontSize: 11, color: 'var(--muted)' }}>· looking up…</span>}</label>
+              <input class="input"
+                placeholder="Apple Inc."
+                value={name} onInput={e => setName(e.currentTarget.value)} />
+            </div>
           </div>
-          <div class="field">
-            <label>Provider ID</label>
-            <input class="input mono"
-              placeholder={providerHint}
-              value={providerID}
-              onInput={e => setProviderID(e.currentTarget.value)} />
+        )}
+
+        {!isCash && (
+          <div class="row-2">
+            <div class="field">
+              <label>Provider</label>
+              <select class="select" value={provider} onChange={e => setProvider(e.currentTarget.value)}>
+                {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+            </div>
+            <div class="field">
+              <label>Provider ID</label>
+              <input class="input mono"
+                placeholder={providerHint}
+                value={providerID}
+                onInput={e => setProviderID(e.currentTarget.value)} />
+            </div>
           </div>
-        </div>
+        )}
 
         <div class="field">
           <label>Color</label>
@@ -183,7 +206,7 @@ export function AssetModal({ asset, onClose, onSaved }) {
         <div class="modal-actions">
           <button type="button" class="btn" onClick={onClose}>Cancel</button>
           <button type="submit" class="btn primary"
-            disabled={!symbol.trim() || !name.trim() || submitting}>
+            disabled={submitting || (!isCash && (!symbol.trim() || !name.trim()))}>
             <Icon name="check" />
             {submitting ? 'Saving…' : editing ? 'Save changes' : 'Create asset'}
           </button>
