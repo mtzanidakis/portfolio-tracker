@@ -50,6 +50,17 @@ export function App() {
   }, [aesthetic]);
   useEffect(() => { localStorage.setItem('pt-privacy', privacy ? '1' : '0'); }, [privacy]);
 
+  // The account-filter seed is a one-shot handed to ActivitiesPage on
+  // mount. Clear it as soon as the page becomes active so a subsequent
+  // natural navigation (sidebar click) starts unfiltered. The effect
+  // runs after the child's useState initializer has already captured
+  // the current value, so the filter still applies on this mount.
+  useEffect(() => {
+    if (page === 'activities' && activityAccountFilter !== 0) {
+      setActivityAccountFilter(0);
+    }
+  }, [page, activityAccountFilter]);
+
   // Attempt to resolve the current user on first mount. 401 → show login.
   useEffect(() => {
     api.me()
