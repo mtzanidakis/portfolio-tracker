@@ -32,10 +32,12 @@ export function App() {
   const [tokensOpen, setTokensOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
-  // Seed state for cross-page navigation. Clicking an account card
-  // routes to Activities with this id pre-selected; the ActivitiesPage
-  // reads it once on mount and controls the filter itself thereafter.
+  // Seed state for cross-page navigation. Clicking an account card or
+  // asset row routes to Activities with this id/symbol pre-selected;
+  // the ActivitiesPage reads it once on mount and controls the filter
+  // itself thereafter.
   const [activityAccountFilter, setActivityAccountFilter] = useState(0);
+  const [activityAssetFilter, setActivityAssetFilter] = useState('');
 
   useEffect(() => { localStorage.setItem('pt-page', page); }, [page]);
   useEffect(() => {
@@ -50,16 +52,17 @@ export function App() {
   }, [aesthetic]);
   useEffect(() => { localStorage.setItem('pt-privacy', privacy ? '1' : '0'); }, [privacy]);
 
-  // The account-filter seed is a one-shot handed to ActivitiesPage on
-  // mount. Clear it as soon as the page becomes active so a subsequent
-  // natural navigation (sidebar click) starts unfiltered. The effect
-  // runs after the child's useState initializer has already captured
-  // the current value, so the filter still applies on this mount.
+  // The account / asset filter seeds are one-shots handed to
+  // ActivitiesPage on mount. Clear them as soon as the page becomes
+  // active so a subsequent natural navigation (sidebar click) starts
+  // unfiltered. The effect runs after the child's useState initializer
+  // has already captured the current value, so the filter still
+  // applies on this mount.
   useEffect(() => {
-    if (page === 'activities' && activityAccountFilter !== 0) {
-      setActivityAccountFilter(0);
-    }
-  }, [page, activityAccountFilter]);
+    if (page !== 'activities') return;
+    if (activityAccountFilter !== 0) setActivityAccountFilter(0);
+    if (activityAssetFilter !== '') setActivityAssetFilter('');
+  }, [page, activityAccountFilter, activityAssetFilter]);
 
   // Attempt to resolve the current user on first mount. 401 → show login.
   useEffect(() => {
@@ -107,8 +110,16 @@ export function App() {
 
   const openAccountActivity = (accountId) => {
     setActivityAccountFilter(accountId);
+    setActivityAssetFilter('');
     setPage('activities');
     setRefreshTick(t => t + 1); // force remount so the initial filter takes
+  };
+
+  const openAssetActivity = (symbol) => {
+    setActivityAssetFilter(symbol);
+    setActivityAccountFilter(0);
+    setPage('activities');
+    setRefreshTick(t => t + 1);
   };
 
   return (
@@ -131,9 +142,9 @@ export function App() {
             * spread — it has to be on the element directly. */}
           {page === 'performance' && <PerformancePage key={refreshTick} {...pageProps} />}
           {page === 'allocations' && <AllocationsPage key={refreshTick} {...pageProps} />}
-          {page === 'activities'  && <ActivitiesPage  key={refreshTick} {...pageProps} user={user} initialAccountId={activityAccountFilter} />}
+          {page === 'activities'  && <ActivitiesPage  key={refreshTick} {...pageProps} user={user} initialAccountId={activityAccountFilter} initialAssetSymbol={activityAssetFilter} />}
           {page === 'accounts'    && <AccountsPage    key={refreshTick} {...pageProps} onOpenActivity={openAccountActivity} />}
-          {page === 'assets'      && <AssetsPage      key={refreshTick} {...pageProps} />}
+          {page === 'assets'      && <AssetsPage      key={refreshTick} {...pageProps} onOpenActivity={openAssetActivity} />}
         </div>
       </main>
 

@@ -22,9 +22,10 @@ const FILTER_TO_SIDES = {
 const PAGE_SIZE = 50;
 const Q_DEBOUNCE_MS = 300;
 
-export function ActivitiesPage({ privacy, currency, user, initialAccountId = 0 }) {
+export function ActivitiesPage({ privacy, currency, user, initialAccountId = 0, initialAssetSymbol = '' }) {
   const [filter, setFilter] = useState('all');
   const [accountId, setAccountId] = useState(initialAccountId || 0); // 0 = all
+  const [assetSymbol, setAssetSymbol] = useState(initialAssetSymbol || '');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('date');
   const [order, setOrder] = useState('desc');
@@ -78,6 +79,7 @@ export function ActivitiesPage({ privacy, currency, user, initialAccountId = 0 }
         q: debouncedQ,
         side: FILTER_TO_SIDES[filter] || '',
         accountId,
+        symbol: assetSymbol,
         sort,
         order,
         cursor,
@@ -104,12 +106,12 @@ export function ActivitiesPage({ privacy, currency, user, initialAccountId = 0 }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Any time the filter, debounced query, account, sort or order
-  // change, reset to page 1 with the new parameters.
+  // Any time the filter, debounced query, account, symbol, sort or
+  // order change, reset to page 1 with the new parameters.
   useEffect(() => {
     fetchPage({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, debouncedQ, accountId, sort, order]);
+  }, [filter, debouncedQ, accountId, assetSymbol, sort, order]);
 
   // Click a header to sort; clicking the active column flips asc/desc.
   const toggleSort = (col) => {
@@ -231,6 +233,23 @@ export function ActivitiesPage({ privacy, currency, user, initialAccountId = 0 }
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
+            {assetSymbol && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'var(--terra-wash)', color: 'var(--terra)',
+                padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 500,
+              }}>
+                Asset: <span class="mono">{assetSymbol}</span>
+                <button type="button" onClick={() => setAssetSymbol('')}
+                  aria-label="Clear asset filter"
+                  style={{
+                    background: 'transparent', border: 'none', padding: 0,
+                    color: 'inherit', cursor: 'pointer', display: 'inline-flex',
+                  }}>
+                  <Icon name="close" size={12} />
+                </button>
+              </span>
+            )}
             <div class="search-wrap">
               <Icon name="search" />
               <input class="search" placeholder="Filter…" value={query}

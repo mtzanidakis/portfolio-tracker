@@ -2,15 +2,17 @@ import { useState, useEffect } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
 import { AssetLogo } from './AssetLogo.jsx';
 import { AssetModal } from './AssetModal.jsx';
+import { AssetDetailsModal } from './AssetDetailsModal.jsx';
 import { api } from '../api.js';
 
 const TYPE_LABEL = { stock: 'Stock', etf: 'ETF', crypto: 'Crypto', cash: 'Cash' };
 
-export function AssetsPage() {
+export function AssetsPage({ onOpenActivity }) {
   const [assets, setAssets] = useState([]);
   const [query, setQuery] = useState('');
   const [err, setErr] = useState(null);
   const [modalAsset, setModalAsset] = useState(null);
+  const [detailsAsset, setDetailsAsset] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
 
   const load = () => {
@@ -76,34 +78,51 @@ export function AssetsPage() {
               {assets.length === 0 ? 'No assets yet — click "Add asset".' : 'No matches.'}
             </td></tr>
           )}
-          {filtered.map(a => (
-            <tr key={a.symbol}>
-              <td data-primary>
-                <div class="ticker">
-                  <AssetLogo asset={a} size={26} />
-                  <div class="ticker-meta">
-                    <div class="ticker-sym" style={{ fontSize: 13 }}>{a.type === 'cash' ? a.currency : a.symbol}</div>
+          {filtered.map(a => {
+            // Non-cash rows open the details modal on click; cash rows
+            // are static (there's no market-price story for a cash
+            // balance). Edit/Delete buttons stopPropagation so they
+            // don't also trigger the row click.
+            const clickable = a.type !== 'cash';
+            const openDetails = () => { if (clickable) setDetailsAsset(a); };
+            return (
+              <tr key={a.symbol}
+                onClick={clickable ? openDetails : undefined}
+                onKeyDown={clickable ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetails(); }
+                } : undefined}
+                role={clickable ? 'button' : undefined}
+                tabIndex={clickable ? 0 : undefined}
+                style={clickable ? { cursor: 'pointer' } : undefined}>
+                <td data-primary>
+                  <div class="ticker">
+                    <AssetLogo asset={a} size={26} />
+                    <div class="ticker-meta">
+                      <div class="ticker-sym" style={{ fontSize: 13 }}>{a.type === 'cash' ? a.currency : a.symbol}</div>
+                    </div>
                   </div>
-                </div>
-              </td>
-              <td data-label="Name" style={{ fontSize: 13 }}>{a.name}</td>
-              <td data-label="Type"><span class={`pill ${a.type}`}>{TYPE_LABEL[a.type] || a.type}</span></td>
-              <td class="mono" data-label="Currency" style={{ fontSize: 13 }}>{a.currency}</td>
-              <td data-label="Provider" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                {a.provider
-                  ? <>{a.provider}{a.provider_id ? ` · ${a.provider_id}` : ''}</>
-                  : '—'}
-              </td>
-              <td data-actions style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                <button class="icon-btn" title="Edit" onClick={() => setModalAsset(a)}>
-                  <Icon name="edit" />
-                </button>
-                <button class="icon-btn" title="Delete" onClick={() => handleDelete(a)}>
-                  <Icon name="trash" />
-                </button>
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td data-label="Name" style={{ fontSize: 13 }}>{a.name}</td>
+                <td data-label="Type"><span class={`pill ${a.type}`}>{TYPE_LABEL[a.type] || a.type}</span></td>
+                <td class="mono" data-label="Currency" style={{ fontSize: 13 }}>{a.currency}</td>
+                <td data-label="Provider" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  {a.provider
+                    ? <>{a.provider}{a.provider_id ? ` · ${a.provider_id}` : ''}</>
+                    : '—'}
+                </td>
+                <td data-actions style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <button class="icon-btn" title="Edit"
+                    onClick={(e) => { e.stopPropagation(); setModalAsset(a); }}>
+                    <Icon name="edit" />
+                  </button>
+                  <button class="icon-btn" title="Delete"
+                    onClick={(e) => { e.stopPropagation(); handleDelete(a); }}>
+                    <Icon name="trash" />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
@@ -118,6 +137,13 @@ export function AssetsPage() {
           asset={modalAsset}
           onClose={() => setModalAsset(null)}
           onSaved={() => { setModalAsset(null); load(); }}
+        />
+      )}
+      {detailsAsset && (
+        <AssetDetailsModal
+          asset={detailsAsset}
+          onClose={() => setDetailsAsset(null)}
+          onShowActivities={(sym) => { if (onOpenActivity) onOpenActivity(sym); }}
         />
       )}
     </div>
