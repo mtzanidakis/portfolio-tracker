@@ -210,6 +210,7 @@ export function ActivitiesPage({ privacy, currency, user }) {
               <th>Asset</th>
               <th style={{ textAlign: 'right' }}>Quantity</th>
               <th style={{ textAlign: 'right' }}>Price</th>
+              <th style={{ textAlign: 'right' }}>Fee</th>
               <th style={{ textAlign: 'right' }}>Total</th>
               <th>Account</th>
               <th>Note</th>
@@ -227,7 +228,7 @@ export function ActivitiesPage({ privacy, currency, user }) {
               return (
                 <tr key={tx.id}>
                   <td class="mono" data-label="Date" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                    {fmtDate(tx.occurred_at, { year: '2-digit', month: 'short', day: '2-digit' })}
+                    {fmtDate(tx.occurred_at)}
                   </td>
                   <td data-label="Side"><span class={`pill ${tx.side}`}>{SIDE_LABEL[tx.side] || tx.side}</span></td>
                   <td data-primary>
@@ -247,6 +248,9 @@ export function ActivitiesPage({ privacy, currency, user }) {
                   <td class="num" data-label="Price" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
                     {isCashTx ? '—' : fmtMoney(tx.price, accCur)}
                   </td>
+                  <td class="num" data-label="Fee" style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
+                    {tx.fee ? fmtMoney(tx.fee, rowCur) : '—'}
+                  </td>
                   <td class="num" data-label="Total" style={{ textAlign: 'right' }}>
                     {privacy ? <span class="masked">{fmtMoney(total, rowCur)}</span> : fmtMoney(total, rowCur)}
                   </td>
@@ -264,10 +268,10 @@ export function ActivitiesPage({ privacy, currency, user }) {
               );
             })}
             {!loading && items.length === 0 && (
-              <tr><td colspan="9" class="empty">No transactions match your filter.</td></tr>
+              <tr><td colspan="10" class="empty">No transactions match your filter.</td></tr>
             )}
             {loading && items.length === 0 && (
-              <tr><td colspan="9" class="empty">Loading…</td></tr>
+              <tr><td colspan="10" class="empty">Loading…</td></tr>
             )}
           </tbody>
         </table>

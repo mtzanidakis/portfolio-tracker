@@ -29,6 +29,11 @@ export function fmtNum(n, decimals = 4) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: decimals });
 }
 
-export function fmtDate(d, opts = { month: 'short', day: 'numeric' }) {
-  return new Date(d).toLocaleDateString('en-US', opts);
+// Default to a fully-numeric date in the browser's locale so US users
+// see MM/DD/YYYY while EU users see DD/MM/YYYY without the app having
+// to know which is which. Callers that want a short axis-style label
+// (e.g. "Feb 13") pass their own opts.
+export function fmtDate(d, opts) {
+  const o = opts ?? { year: 'numeric', month: '2-digit', day: '2-digit' };
+  return new Date(d).toLocaleDateString(undefined, o);
 }

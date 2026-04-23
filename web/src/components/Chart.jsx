@@ -113,7 +113,7 @@ export function PerformanceChart({ series, privacy, currency }) {
               font: { family: cssVar('--font-mono', 'ui-monospace, monospace'), size: 11 },
               callback(val) {
                 const lbl = this.getLabelForValue(val);
-                return fmtDate(lbl);
+                return fmtDate(lbl, { month: 'short', day: 'numeric' });
               },
             },
           },
