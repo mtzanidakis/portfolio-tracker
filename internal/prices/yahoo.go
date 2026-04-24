@@ -100,12 +100,13 @@ type yahooChartResponse struct {
 	} `json:"chart"`
 }
 
-// FetchHistory pulls ~1y of daily closes for symbol via the chart
-// endpoint. Returns snapshots denominated in the asset's native
-// currency (as reported by Yahoo).
-func (y *YahooProvider) FetchHistory(ctx context.Context, symbol string) ([]HistoricalSnapshot, error) {
+// FetchHistory pulls daily closes for symbol via the chart endpoint.
+// The range parameter is picked as the smallest supported window
+// covering `from` (1y / 2y / 5y / 10y / max). A zero `from` defaults
+// to 1y. Returns snapshots in the asset's native currency.
+func (y *YahooProvider) FetchHistory(ctx context.Context, symbol string, from time.Time) ([]HistoricalSnapshot, error) {
 	params := url.Values{
-		"range":    {"1y"},
+		"range":    {yahooRangeFor(from)},
 		"interval": {"1d"},
 	}
 	body, err := y.authedGet(ctx, "/v8/finance/chart/"+url.PathEscape(symbol), params)
@@ -236,6 +237,32 @@ func parqetLogoURL(symbol string) string {
 		return ""
 	}
 	return "https://assets.parqet.com/logos/symbol/" + url.PathEscape(symbol)
+}
+
+// yahooRangeFor returns the smallest Yahoo chart range string that
+// covers back to `from`. The chart endpoint only accepts a fixed
+// set of range aliases (1y / 2y / 5y / 10y / max), so we round up to
+// the next available step. A zero `from` means "no preference" and
+// uses the previous default of 1y.
+func yahooRangeFor(from time.Time) string {
+	if from.IsZero() {
+		return "1y"
+	}
+	age := time.Since(from)
+	// 365.25 days to absorb leap years without a calendar library.
+	years := age.Hours() / (24 * 365.25)
+	switch {
+	case years <= 1:
+		return "1y"
+	case years <= 2:
+		return "2y"
+	case years <= 5:
+		return "5y"
+	case years <= 10:
+		return "10y"
+	default:
+		return "max"
+	}
 }
 
 // yahooQuoteTypeToAsset maps Yahoo's quoteType enum to our AssetType.

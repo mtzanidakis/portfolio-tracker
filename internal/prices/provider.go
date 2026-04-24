@@ -58,8 +58,14 @@ type HistoricalSnapshot struct {
 
 // HistoryProvider can fetch daily price history for a single external
 // identifier (ticker / coin id). Implemented by Yahoo + CoinGecko.
+//
+// `from` is the earliest date the caller wants covered. Providers may
+// return more than that (rounded up to their supported range step —
+// Yahoo only offers 1y/2y/5y/10y/max, for instance) and must return
+// what exists when the instrument hasn't traded that far back. Zero
+// `from` means "provider default", typically ~1 year.
 type HistoryProvider interface {
-	FetchHistory(ctx context.Context, externalID string) ([]HistoricalSnapshot, error)
+	FetchHistory(ctx context.Context, externalID string, from time.Time) ([]HistoricalSnapshot, error)
 }
 
 // HistoricalFxRate is a dated FX quote expressed as "1 Currency = X USD".

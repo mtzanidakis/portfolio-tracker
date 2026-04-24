@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -167,12 +169,16 @@ func (c *CoinGeckoProvider) LookupSymbol(ctx context.Context, symbol string) (*S
 	return best, nil
 }
 
-// FetchHistory pulls ~1y of daily USD closes for the given CoinGecko
-// coin id via /coins/{id}/market_chart?vs_currency=usd&days=365.
-func (c *CoinGeckoProvider) FetchHistory(ctx context.Context, id string) ([]HistoricalSnapshot, error) {
+// FetchHistory pulls daily USD closes for the given CoinGecko coin id
+// via /coins/{id}/market_chart. `days` is derived from `from`: the
+// CoinGecko endpoint auto-selects daily granularity when days > 90,
+// hourly/5-min for shorter ranges. Zero from defaults to 365 days.
+// Callers hand in a coin id (not a ticker); see LookupSymbol for the
+// ticker-to-id mapping.
+func (c *CoinGeckoProvider) FetchHistory(ctx context.Context, id string, from time.Time) ([]HistoricalSnapshot, error) {
 	u := c.BaseURL + "/coins/" + url.PathEscape(id) + "/market_chart?" + url.Values{
 		"vs_currency": {"usd"},
-		"days":        {"365"},
+		"days":        {coingeckoDaysFor(from)},
 		"interval":    {"daily"},
 	}.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
@@ -209,4 +215,18 @@ func (c *CoinGeckoProvider) FetchHistory(ctx context.Context, id string) ([]Hist
 		})
 	}
 	return out, nil
+}
+
+// coingeckoDaysFor converts a "from" timestamp into the "days" query
+// parameter accepted by /coins/{id}/market_chart. The endpoint auto-
+// selects daily granularity when days > 90, so any value above that
+// is fine; we clamp sub-year requests up to 365 to match the previous
+// default. A zero from also returns 365.
+func coingeckoDaysFor(from time.Time) string {
+	if from.IsZero() {
+		return "365"
+	}
+	age := time.Since(from)
+	days := max(int(math.Ceil(age.Hours()/24)), 365)
+	return strconv.Itoa(days)
 }

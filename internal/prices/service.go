@@ -60,14 +60,23 @@ func (s *Service) RefreshAll(ctx context.Context) error {
 	return nil
 }
 
-// refreshPriceHistory fills price_snapshots with daily closes for the
-// last year (provider-dependent). Called after refreshPrices so the
-// DB always has a latest price even if history fetching fails.
+// refreshPriceHistory fills price_snapshots with daily closes going
+// back to each asset's earliest transaction (at least 1 year). Called
+// after refreshPrices so the DB always has a latest price even if
+// history fetching fails.
 func (s *Service) refreshPriceHistory(ctx context.Context) error {
 	assets, err := s.DB.ListAssets(ctx)
 	if err != nil {
 		return err
 	}
+	// Bookend the whole pass with a single start/end log so operators
+	// can correlate "the chart updated" with a refresh cycle. Per-asset
+	// fetches log only on completion (or warn on failure) to keep the
+	// volume reasonable.
+	started := time.Now()
+	s.Logger.Info("price history backfill starting", "asset_count", len(assets))
+
+	var fetched, persisted int
 	for _, a := range assets {
 		if a.Type == domain.AssetCash || a.Provider == "" {
 			continue
@@ -90,45 +99,105 @@ func (s *Service) refreshPriceHistory(ctx context.Context) error {
 		if id == "" {
 			id = a.Symbol
 		}
-		snapshots, err := provider.FetchHistory(ctx, id)
+		from := historyFrom(ctx, s.DB, a.Symbol)
+		snapshots, err := provider.FetchHistory(ctx, id, from)
 		if err != nil {
-			s.Logger.Warn("history fetch failed", "symbol", a.Symbol, "err", err)
+			s.Logger.Warn("history fetch failed",
+				"symbol", a.Symbol, "from", from.Format("2006-01-02"), "err", err)
 			continue
 		}
+		fetched++
 		for _, snap := range snapshots {
 			if err := s.DB.InsertPriceSnapshot(ctx, db.PriceSnapshot{
 				Symbol: a.Symbol, At: snap.At, Price: snap.Price,
 			}); err != nil {
 				s.Logger.Warn("persist snapshot failed",
 					"symbol", a.Symbol, "at", snap.At, "err", err)
+				continue
 			}
+			persisted++
 		}
+		s.Logger.Info("history fetched",
+			"symbol", a.Symbol,
+			"from", from.Format("2006-01-02"),
+			"snapshots", len(snapshots))
 	}
+
+	s.Logger.Info("price history backfill complete",
+		"assets_fetched", fetched,
+		"snapshots_written", persisted,
+		"elapsed_ms", time.Since(started).Milliseconds())
 	return nil
 }
 
-// refreshFxHistory pulls a year of daily rates for every non-USD
-// supported currency and upserts them into fx_rates.
+// refreshFxHistory pulls daily rates for every non-USD supported
+// currency, covering back to the oldest transaction in the system
+// (floored at 1 year). Idempotent via InsertFxRate's upsert.
 func (s *Service) refreshFxHistory(ctx context.Context) error {
 	provider, ok := s.Fx.(FxRangeProvider)
 	if !ok {
 		return nil
 	}
 	to := time.Now().UTC()
-	from := to.AddDate(-1, 0, 0)
+	from := fxBackfillFrom(ctx, s.DB, to)
+	started := time.Now()
+	s.Logger.Info("fx history backfill starting",
+		"from", from.Format("2006-01-02"),
+		"to", to.Format("2006-01-02"))
+
 	rates, err := provider.FetchRange(ctx, domain.AllCurrencies, from, to)
 	if err != nil {
+		s.Logger.Warn("fx history fetch failed", "err", err)
 		return err
 	}
+	var persisted int
 	for _, r := range rates {
 		if err := s.DB.InsertFxRate(ctx, db.FxRate{
 			Currency: r.Currency, At: r.At, USDRate: r.USDRate,
 		}); err != nil {
 			s.Logger.Warn("persist fx history failed",
 				"currency", r.Currency, "at", r.At, "err", err)
+			continue
 		}
+		persisted++
 	}
+	s.Logger.Info("fx history backfill complete",
+		"rates_written", persisted,
+		"elapsed_ms", time.Since(started).Milliseconds())
 	return nil
+}
+
+// historyFrom returns the earliest tx date for a given asset, floored
+// so we always fetch at least one year of history (keeps the chart
+// detailed for freshly-added assets with only a few recent buys).
+// On any lookup error we fall back to the 1-year default.
+func historyFrom(ctx context.Context, d *db.DB, symbol string) time.Time {
+	now := time.Now().UTC()
+	floor := now.AddDate(-1, 0, 0)
+	earliest, err := d.EarliestTxDateForSymbol(ctx, symbol)
+	if err != nil {
+		return floor
+	}
+	if earliest.After(floor) {
+		return floor
+	}
+	return earliest
+}
+
+// fxBackfillFrom picks the start date for the FX history backfill:
+// the earliest transaction across every user (since FX quotes are
+// shared globally), floored at one year so we always have a useful
+// recent window even on empty databases.
+func fxBackfillFrom(ctx context.Context, d *db.DB, now time.Time) time.Time {
+	floor := now.AddDate(-1, 0, 0)
+	earliest, err := d.EarliestTxDate(ctx)
+	if err != nil {
+		return floor
+	}
+	if earliest.After(floor) {
+		return floor
+	}
+	return earliest
 }
 
 type assetRef struct {

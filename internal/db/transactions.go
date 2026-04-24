@@ -309,6 +309,53 @@ func (db *DB) TransactionSummary(ctx context.Context, userID int64) (*TxSummary,
 	return &s, nil
 }
 
+// EarliestTxDate returns the oldest transaction's occurred_at across
+// every user. Returns ErrNotFound when the table is empty. Used by the
+// price / FX backfill to decide how far back to ask providers for
+// historical data.
+func (db *DB) EarliestTxDate(ctx context.Context) (time.Time, error) {
+	return scanEarliestTime(db.QueryRowContext(ctx,
+		`SELECT MIN(occurred_at) FROM transactions`,
+	), "earliest tx date")
+}
+
+// EarliestTxDateForSymbol returns the oldest transaction date for a
+// given asset symbol. Used by the per-asset history backfill so we ask
+// the provider only for the range actually needed.
+func (db *DB) EarliestTxDateForSymbol(ctx context.Context, symbol string) (time.Time, error) {
+	return scanEarliestTime(db.QueryRowContext(ctx,
+		`SELECT MIN(occurred_at) FROM transactions WHERE asset_symbol = ?`,
+		symbol,
+	), "earliest tx for "+symbol)
+}
+
+// scanEarliestTime decodes the result of a `SELECT MIN(occurred_at)`
+// row. The modernc/sqlite driver hands timestamp columns back as TEXT
+// in Go's time.Time.String() shape ("2006-01-02 15:04:05 -0700 MST"),
+// which sql.NullTime can't scan — so we read into a nullable string
+// and parse layouts in priority order. Returns ErrNotFound when the
+// table is empty (NULL aggregate).
+func scanEarliestTime(row *sql.Row, op string) (time.Time, error) {
+	var raw sql.NullString
+	if err := row.Scan(&raw); err != nil {
+		return time.Time{}, fmt.Errorf("%s: %w", op, err)
+	}
+	if !raw.Valid || raw.String == "" {
+		return time.Time{}, ErrNotFound
+	}
+	for _, layout := range []string{
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
+		time.RFC3339Nano,
+		time.RFC3339,
+	} {
+		if t, err := time.Parse(layout, raw.String); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("%s: unrecognised timestamp %q", op, raw.String)
+}
+
 // DeleteTransaction removes the transaction by id.
 func (db *DB) DeleteTransaction(ctx context.Context, id int64) error {
 	res, err := db.ExecContext(ctx, `DELETE FROM transactions WHERE id = ?`, id)

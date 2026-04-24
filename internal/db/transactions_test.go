@@ -55,6 +55,60 @@ func TestTransactionCRUD(t *testing.T) {
 	}
 }
 
+func TestEarliestTxDate(t *testing.T) {
+	db := newTestDB(t)
+	ctx := t.Context()
+
+	if _, err := db.EarliestTxDate(ctx); !errors.Is(err, ErrNotFound) {
+		t.Errorf("empty table: expected ErrNotFound, got %v", err)
+	}
+
+	u := mustCreateUser(t, db, "early@test.io")
+	acc := mustCreateAccount(t, db, u.ID, domain.USD)
+	mustCreateAsset(t, db, "AAPL", domain.AssetStock, domain.USD)
+	mustCreateAsset(t, db, "MSFT", domain.AssetStock, domain.USD)
+
+	for _, tx := range []*domain.Transaction{
+		{
+			UserID: u.ID, AccountID: acc.ID, AssetSymbol: "AAPL", Side: domain.SideBuy,
+			Qty: 1, Price: 100, FxToBase: 1, OccurredAt: mustTime(t, "2024-01-21T22:00:00Z"),
+		},
+		{
+			UserID: u.ID, AccountID: acc.ID, AssetSymbol: "MSFT", Side: domain.SideBuy,
+			Qty: 1, Price: 100, FxToBase: 1, OccurredAt: mustTime(t, "2025-06-01T10:00:00Z"),
+		},
+		{
+			UserID: u.ID, AccountID: acc.ID, AssetSymbol: "AAPL", Side: domain.SideBuy,
+			Qty: 1, Price: 110, FxToBase: 1, OccurredAt: mustTime(t, "2025-12-15T09:00:00Z"),
+		},
+	} {
+		if err := db.CreateTransaction(ctx, tx); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	want := mustTime(t, "2024-01-21T22:00:00Z")
+	got, err := db.EarliestTxDate(ctx)
+	if err != nil {
+		t.Fatalf("global: %v", err)
+	}
+	if !got.Equal(want) {
+		t.Errorf("global: got %v want %v", got, want)
+	}
+
+	gotAAPL, err := db.EarliestTxDateForSymbol(ctx, "AAPL")
+	if err != nil {
+		t.Fatalf("AAPL: %v", err)
+	}
+	if !gotAAPL.Equal(want) {
+		t.Errorf("AAPL: got %v want %v", gotAAPL, want)
+	}
+
+	if _, err := db.EarliestTxDateForSymbol(ctx, "NOPE"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing symbol: expected ErrNotFound, got %v", err)
+	}
+}
+
 func TestListTransactions_Filters(t *testing.T) {
 	db := newTestDB(t)
 	ctx := t.Context()
