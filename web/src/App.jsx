@@ -6,6 +6,7 @@ import { AllocationsPage } from './components/AllocationsPage.jsx';
 import { ActivitiesPage } from './components/ActivitiesPage.jsx';
 import { AccountsPage } from './components/AccountsPage.jsx';
 import { AssetsPage } from './components/AssetsPage.jsx';
+import { ImportExportPage } from './components/ImportExportPage.jsx';
 import { TxModal } from './components/TxModal.jsx';
 import { LoginForm } from './components/LoginForm.jsx';
 import { ProfileModal } from './components/ProfileModal.jsx';
@@ -20,6 +21,7 @@ const TITLES = {
   activities:  { t: 'Activities',  s: 'Every buy, every sell' },
   accounts:    { t: 'Accounts',    s: 'Brokerages, exchanges, wallets' },
   assets:      { t: 'Assets',      s: 'Tickers you can trade or hold' },
+  importexport:{ t: 'Import / Export', s: 'Bring data in, take backups out' },
 };
 
 export function App() {
@@ -164,6 +166,7 @@ export function App() {
           {page === 'activities'  && <ActivitiesPage  key={refreshTick} {...pageProps} user={user} initialAccountId={activityAccountFilter} initialAssetSymbol={activityAssetFilter} />}
           {page === 'accounts'    && <AccountsPage    key={refreshTick} {...pageProps} onOpenActivity={openAccountActivity} />}
           {page === 'assets'      && <AssetsPage      key={refreshTick} {...pageProps} onOpenActivity={openAssetActivity} />}
+          {page === 'importexport'&& <ImportExportPage key={refreshTick} />}
         </div>
       </main>
 

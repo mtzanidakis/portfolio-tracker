@@ -133,4 +133,15 @@ export const api = {
   allocations:   (g='asset') => request('GET', '/api/v1/allocations?group=' + g),
   performance:   (tf='6M')   => request('GET', '/api/v1/performance?tf=' + tf),
   refreshPrices: ()          => request('POST', '/api/v1/prices/refresh'),
+
+  // --- import / export ---
+  //
+  // importAnalyze posts the uploaded file body parsed-as-JSON. The
+  // request() helper already stringifies the object, so the caller
+  // passes the parsed source export and the server receives the raw
+  // JSON — no multipart plumbing.
+  importAnalyze: (source, parsedJson) =>
+    request('POST', `/api/v1/import/${encodeURIComponent(source)}/analyze`, parsedJson),
+  importApply:   (plan) => request('POST', '/api/v1/import/apply', plan),
+  exportURL:     (format='json') => `/api/v1/export?format=${format}`,
 };

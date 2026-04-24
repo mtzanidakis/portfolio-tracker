@@ -109,6 +109,10 @@ func NewRouter(d *db.DB, sessionLifetime time.Duration, opts ...Option) *http.Se
 
 	mux.Handle("GET /api/v1/fx/rate", protect(fxRateHandler(cfg.fxHistory)))
 
+	mux.Handle("GET /api/v1/export", protect(exportHandler(d)))
+	mux.Handle("POST /api/v1/import/{source}/analyze", protect(importAnalyzeHandler(d, cfg.lookupYahoo, cfg.lookupCoinGko)))
+	mux.Handle("POST /api/v1/import/apply", protect(importApplyHandler(d, cfg.fxHistory)))
+
 	if cfg.refresher != nil {
 		mux.Handle("POST /api/v1/prices/refresh", protect(refreshPricesHandler(cfg.refresher)))
 	}

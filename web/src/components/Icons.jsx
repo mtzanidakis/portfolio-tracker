@@ -24,6 +24,7 @@ export function Icon({ name, size = 16 }) {
     more:      <><circle cx="12" cy="12" r="1.5" /><circle cx="5" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></>,
     check:     <><path d="M20 6 9 17l-5-5" /></>,
     menu:      <><path d="M3 6h18M3 12h18M3 18h18" /></>,
+    swap:      <><path d="M7 10V3l-4 4 4 4" /><path d="M17 14v7l4-4-4-4" /><path d="M3 7h14" /><path d="M21 17H7" /></>,
   };
   return <svg {...common}>{paths[name] || null}</svg>;
 }

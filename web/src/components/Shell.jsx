@@ -6,11 +6,12 @@ import { fmtMoney } from '../format.js';
 export function Sidebar({ page, setPage, user, open, onClose, onProfile, onSettings, onTokens, onSignOut }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const items = [
-    { id: 'performance', label: 'Performance', icon: 'chart' },
-    { id: 'allocations', label: 'Allocations', icon: 'pie' },
-    { id: 'activities',  label: 'Activities',  icon: 'activity' },
-    { id: 'accounts',    label: 'Accounts',    icon: 'wallet' },
-    { id: 'assets',      label: 'Assets',      icon: 'coins' },
+    { id: 'performance',  label: 'Performance',     icon: 'chart' },
+    { id: 'allocations',  label: 'Allocations',     icon: 'pie' },
+    { id: 'accounts',     label: 'Accounts',        icon: 'wallet' },
+    { id: 'assets',       label: 'Assets',          icon: 'coins' },
+    { id: 'activities',   label: 'Activities',      icon: 'activity' },
+    { id: 'importexport', label: 'Import / Export', icon: 'swap' },
   ];
   const initials = (user?.name || '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
   // On mobile the sidebar slides in as a drawer; picking a nav item
