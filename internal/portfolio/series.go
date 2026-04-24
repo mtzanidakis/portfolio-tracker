@@ -40,11 +40,12 @@ type holdingState struct {
 // rates, and produces the portfolio's total value and cost basis in
 // `base` for each day.
 //
-// A day with a missing price for a held asset contributes the asset at
-// its most recently known price (the caller's PriceAtFn is expected to
-// implement that fallback); a day with missing FX is skipped for the
-// affected holding. Cost is always known (it was locked at tx time) and
-// is emitted regardless of price/FX availability.
+// When a holding's market price or FX rate is not available for a
+// given day (common before price history has been backfilled for old
+// transactions), the holding contributes its cost basis to the value
+// instead of being skipped. That keeps the chart smooth — a pre-
+// history position reads as "worth what I paid" rather than collapsing
+// to zero and spiking only on tx days.
 func SeriesFromTransactions(
 	txs []*domain.Transaction,
 	from, to time.Time,
@@ -121,25 +122,32 @@ func SeriesFromTransactions(
 			}
 			totalCost += h.costBase
 
+			// Any of the three conditions below (tx today, missing
+			// price, missing asset currency, missing FX) means we
+			// can't quote this holding at market — fall back to cost
+			// so the aggregate stays meaningful instead of leaving
+			// a zero-valued hole for this holding.
+			valueAtCost := func() { totalValue += h.costBase }
+
 			if txToday[sym] {
-				// Anchor value == cost on tx days so deposits register
-				// at book value rather than at the day's closing price.
-				totalValue += h.costBase
+				valueAtCost()
 				continue
 			}
-
 			price, ok := priceAt(sym, day)
 			if !ok {
+				valueAtCost()
 				continue
 			}
 			cur, ok := assetCur(sym)
 			if !ok {
+				valueAtCost()
 				continue
 			}
 			rate := 1.0
 			if cur != base {
 				srcUSD, ok1 := fxAt(cur, day)
 				if !ok1 || !baseOK || baseUSD == 0 {
+					valueAtCost()
 					continue
 				}
 				rate = srcUSD / baseUSD
