@@ -52,6 +52,11 @@ export function AssetDetailsModal({ asset, privacy, onClose, onShowActivities })
   const buyPrices = buys.map(t => t.price).filter(p => p > 0);
   const minBuy = buyPrices.length ? Math.min(...buyPrices) : null;
   const maxBuy = buyPrices.length ? Math.max(...buyPrices) : null;
+  // Qty-weighted mean buy price, fees excluded — pairs naturally with
+  // the range (same semantics: a per-unit price, not a cost basis).
+  const buyQtySum = buys.reduce((s, t) => s + t.qty, 0);
+  const buyGrossSum = buys.reduce((s, t) => s + t.qty * t.price, 0);
+  const avgBuy = buyQtySum > 0 ? buyGrossSum / buyQtySum : null;
 
   // Replay chronologically for running qty + cost (used for current
   // value and unrealized PnL) and for realised PnL on sells.
@@ -162,16 +167,19 @@ export function AssetDetailsModal({ asset, privacy, onClose, onShowActivities })
               value={txs.length.toString()}
               sub={firstTx ? `since ${fmtDate(firstTx.occurred_at)}` : '—'}
             />
-            <div style={{ gridColumn: '1 / -1' }}>
-              <Stat
-                label="Buy price range"
-                value={
-                  minBuy !== null
-                    ? <>{m(minBuy)} — {m(maxBuy)}</>
-                    : '—'
-                }
-              />
-            </div>
+            <Stat
+              label="Buy price range"
+              value={
+                minBuy !== null
+                  ? <>{m(minBuy)} — {m(maxBuy)}</>
+                  : '—'
+              }
+            />
+            <Stat
+              label="Average buy price"
+              value={avgBuy !== null ? m(avgBuy) : '—'}
+              sub={buyQtySum > 0 ? `weighted by qty · ${fmtNum(buyQtySum, 4)} units` : null}
+            />
           </div>
         )}
 
