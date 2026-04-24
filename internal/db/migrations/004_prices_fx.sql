@@ -1,5 +1,5 @@
 CREATE TABLE price_snapshots (
-    asset_symbol TEXT NOT NULL REFERENCES assets(symbol),
+    asset_symbol TEXT NOT NULL REFERENCES assets(symbol) ON DELETE CASCADE,
     at           TIMESTAMP NOT NULL,
     price        REAL NOT NULL,
     PRIMARY KEY (asset_symbol, at)
@@ -8,7 +8,7 @@ CREATE TABLE price_snapshots (
 CREATE INDEX idx_snap_date ON price_snapshots(at);
 
 CREATE TABLE prices_latest (
-    asset_symbol TEXT PRIMARY KEY REFERENCES assets(symbol),
+    asset_symbol TEXT PRIMARY KEY REFERENCES assets(symbol) ON DELETE CASCADE,
     price        REAL NOT NULL,
     fetched_at   TIMESTAMP NOT NULL
 );

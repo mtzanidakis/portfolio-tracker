@@ -84,11 +84,28 @@ func (db *DB) ListAssets(ctx context.Context) ([]*domain.Asset, error) {
 	return out, rows.Err()
 }
 
-// DeleteAsset removes an asset. The FK on transactions.asset_symbol
-// cascades, so every transaction referencing the asset is wiped in the
-// same statement — callers that display activity should re-fetch.
+// DeleteAsset removes an asset and every row that references it.
+// transactions and asset_logos cascade via their FKs, but the price
+// tables (migration 004) were written without ON DELETE CASCADE, so
+// we clear them explicitly inside the same transaction. Everything
+// happens atomically — a partial failure leaves the asset intact.
 func (db *DB) DeleteAsset(ctx context.Context, symbol string) error {
-	res, err := db.ExecContext(ctx, `DELETE FROM assets WHERE symbol = ?`, symbol)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("delete asset: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, q := range []string{
+		`DELETE FROM price_snapshots WHERE asset_symbol = ?`,
+		`DELETE FROM prices_latest   WHERE asset_symbol = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, symbol); err != nil {
+			return fmt.Errorf("delete asset children: %w", err)
+		}
+	}
+
+	res, err := tx.ExecContext(ctx, `DELETE FROM assets WHERE symbol = ?`, symbol)
 	if err != nil {
 		return fmt.Errorf("delete asset: %w", err)
 	}
@@ -96,5 +113,5 @@ func (db *DB) DeleteAsset(ctx context.Context, symbol string) error {
 	if n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit()
 }
