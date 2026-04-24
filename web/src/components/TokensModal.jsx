@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
+import { fmtDate } from '../format.js';
 import { api } from '../api.js';
 
 export function TokensModal({ onClose }) {
@@ -61,7 +62,7 @@ export function TokensModal({ onClose }) {
     } catch { /* ignore */ }
   };
 
-  const fmtDate = (s) => s ? new Date(s).toLocaleDateString() : '—';
+  const fmtMaybe = (s) => s ? fmtDate(s) : '—';
 
   return (
     <div class="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -134,8 +135,8 @@ export function TokensModal({ onClose }) {
               {tokens.map(t => (
                 <tr key={t.id} style={{ opacity: t.revoked_at ? 0.5 : 1 }}>
                   <td>{t.name}</td>
-                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtDate(t.created_at)}</td>
-                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtDate(t.last_used_at)}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtMaybe(t.created_at)}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtMaybe(t.last_used_at)}</td>
                   <td>
                     {t.revoked_at
                       ? <span style={{ color: 'var(--neg)', fontSize: 12 }}>Revoked</span>

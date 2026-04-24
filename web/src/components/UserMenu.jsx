@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 
-export function UserMenu({ onProfile, onTokens, onSignOut, onClose }) {
+export function UserMenu({ onProfile, onSettings, onTokens, onSignOut, onClose }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -48,6 +48,7 @@ export function UserMenu({ onProfile, onTokens, onSignOut, onClose }) {
       overflow: 'hidden',
     }}>
       {item('Profile', onProfile)}
+      {item('Settings', onSettings)}
       {item('API tokens', onTokens)}
       <div style={{ height: 1, background: 'var(--border)' }} />
       {item('Sign out', onSignOut, { color: 'var(--neg)' })}

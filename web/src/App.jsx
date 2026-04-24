@@ -9,7 +9,9 @@ import { AssetsPage } from './components/AssetsPage.jsx';
 import { TxModal } from './components/TxModal.jsx';
 import { LoginForm } from './components/LoginForm.jsx';
 import { ProfileModal } from './components/ProfileModal.jsx';
+import { SettingsModal } from './components/SettingsModal.jsx';
 import { TokensModal } from './components/TokensModal.jsx';
+import { setDateFormat } from './format.js';
 import { api } from './api.js';
 
 const TITLES = {
@@ -24,11 +26,20 @@ export function App() {
   const [page, setPage] = useState(() => localStorage.getItem('pt-page') || 'performance');
   const [theme, setTheme] = useState(() => localStorage.getItem('pt-theme') || 'system');
   const [aesthetic, setAesthetic] = useState(() => localStorage.getItem('pt-aesthetic') || 'technical');
+  // Seed format.js' module-level pattern synchronously so the very
+  // first render of any page already formats dates the way the user
+  // asked — otherwise we'd flash the browser-locale default.
+  const [dateFormat, setDateFormatState] = useState(() => {
+    const saved = localStorage.getItem('pt-dateformat') || 'browser';
+    setDateFormat(saved);
+    return saved;
+  });
   const [privacy, setPrivacy] = useState(() => localStorage.getItem('pt-privacy') === '1');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAddTx, setShowAddTx] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [tokensOpen, setTokensOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -50,6 +61,13 @@ export function App() {
     localStorage.setItem('pt-aesthetic', aesthetic);
     document.documentElement.setAttribute('data-aesthetic', aesthetic);
   }, [aesthetic]);
+  useEffect(() => {
+    localStorage.setItem('pt-dateformat', dateFormat);
+    setDateFormat(dateFormat);
+    // Force a remount of the active page so all already-rendered
+    // dates pick up the new pattern in place.
+    setRefreshTick(t => t + 1);
+  }, [dateFormat]);
   useEffect(() => { localStorage.setItem('pt-privacy', privacy ? '1' : '0'); }, [privacy]);
 
   // The account / asset filter seeds are one-shots handed to
@@ -129,6 +147,7 @@ export function App() {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onProfile={() => setProfileOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
         onTokens={() => setTokensOpen(true)}
         onSignOut={signOut}
       />
@@ -155,10 +174,17 @@ export function App() {
       )}
       {profileOpen && (
         <ProfileModal user={user}
-          aesthetic={aesthetic}
-          setAesthetic={setAesthetic}
           onSaved={(u) => setUser(u)}
           onClose={() => setProfileOpen(false)} />
+      )}
+      {settingsOpen && (
+        <SettingsModal user={user}
+          aesthetic={aesthetic}
+          setAesthetic={setAesthetic}
+          dateFormat={dateFormat}
+          setDateFormat={setDateFormatState}
+          onSaved={(u) => setUser(u)}
+          onClose={() => setSettingsOpen(false)} />
       )}
       {tokensOpen && (
         <TokensModal onClose={() => setTokensOpen(false)} />

@@ -3,17 +3,10 @@ import { Icon } from './Icons.jsx';
 import { api } from '../api.js';
 
 const MIN_PW = 8;
-const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD'];
-const AESTHETICS = [
-  { id: 'technical', label: 'Technical', sub: 'Slate + electric blue' },
-  { id: 'editorial', label: 'Editorial', sub: 'Neutral paper + red' },
-  { id: 'forest',    label: 'Forest',    sub: 'Cool green + slate' },
-];
 
-export function ProfileModal({ user, aesthetic, setAesthetic, onClose, onSaved }) {
+export function ProfileModal({ user, onClose, onSaved }) {
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
-  const [baseCur, setBaseCur] = useState(user.base_currency);
   const [profileMsg, setProfileMsg] = useState('');
   const [profileErr, setProfileErr] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -33,7 +26,6 @@ export function ProfileModal({ user, aesthetic, setAesthetic, onClose, onSaved }
       const patch = {};
       if (name !== user.name) patch.name = name;
       if (email !== user.email) patch.email = email;
-      if (baseCur !== user.base_currency) patch.base_currency = baseCur;
       if (Object.keys(patch).length === 0) {
         setProfileMsg('No changes.');
         return;
@@ -78,7 +70,7 @@ export function ProfileModal({ user, aesthetic, setAesthetic, onClose, onSaved }
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <h2 class="modal-title">Profile</h2>
-            <div class="modal-sub">Update your display name, email, reporting currency, or password.</div>
+            <div class="modal-sub">Update your display name, email or password.</div>
           </div>
           <button type="button" class="icon-btn" onClick={onClose}><Icon name="close" /></button>
         </div>
@@ -92,12 +84,6 @@ export function ProfileModal({ user, aesthetic, setAesthetic, onClose, onSaved }
             <label>Email</label>
             <input class="input" type="email" value={email} onInput={e => setEmail(e.currentTarget.value)} />
           </div>
-          <div class="field">
-            <label>Base currency</label>
-            <select class="select" value={baseCur} onChange={e => setBaseCur(e.currentTarget.value)}>
-              {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
           {profileErr && <div style={{ color: 'var(--neg)', fontSize: 13, marginTop: 4 }}>{profileErr}</div>}
           {profileMsg && <div style={{ color: 'var(--pos)', fontSize: 13, marginTop: 4 }}>{profileMsg}</div>}
           <div class="modal-actions" style={{ justifyContent: 'flex-end' }}>
@@ -106,29 +92,6 @@ export function ProfileModal({ user, aesthetic, setAesthetic, onClose, onSaved }
             </button>
           </div>
         </form>
-
-        <div style={{ height: 1, background: 'var(--border)', margin: '16px 0' }} />
-
-        <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>Aesthetic</h3>
-        <div style={{ display: 'grid', gap: 6, marginBottom: 18 }}>
-          {AESTHETICS.map(opt => (
-            <button key={opt.id} type="button" onClick={() => setAesthetic(opt.id)}
-              style={{
-                textAlign: 'left', padding: '8px 10px',
-                border: `1px solid ${aesthetic === opt.id ? 'var(--terra)' : 'var(--border)'}`,
-                background: aesthetic === opt.id ? 'var(--terra-wash)' : 'var(--bg-sunken)',
-                borderRadius: 'var(--radius-sm)',
-                color: aesthetic === opt.id ? 'var(--terra)' : 'var(--text)',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{opt.label}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{opt.sub}</div>
-              </div>
-              {aesthetic === opt.id && <Icon name="check" size={14} />}
-            </button>
-          ))}
-        </div>
 
         <div style={{ height: 1, background: 'var(--border)', margin: '16px 0' }} />
 

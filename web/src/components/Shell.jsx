@@ -3,7 +3,7 @@ import { Icon } from './Icons.jsx';
 import { UserMenu } from './UserMenu.jsx';
 import { fmtMoney } from '../format.js';
 
-export function Sidebar({ page, setPage, user, open, onClose, onProfile, onTokens, onSignOut }) {
+export function Sidebar({ page, setPage, user, open, onClose, onProfile, onSettings, onTokens, onSignOut }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const items = [
     { id: 'performance', label: 'Performance', icon: 'chart' },
@@ -57,6 +57,7 @@ export function Sidebar({ page, setPage, user, open, onClose, onProfile, onToken
           {menuOpen && (
             <UserMenu
               onProfile={onProfile}
+              onSettings={onSettings}
               onTokens={onTokens}
               onSignOut={onSignOut}
               onClose={() => setMenuOpen(false)}
