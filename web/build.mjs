@@ -1,7 +1,6 @@
 import esbuild from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -41,11 +40,24 @@ const appOutputKey = Object.keys(jsResult.metafile.outputs)
 if (!appOutputKey) throw new Error('esbuild produced no .js output');
 const appName = path.basename(appOutputKey);
 
-// Hash styles.css by content and emit under the hashed name.
-const stylesContent = fs.readFileSync(path.join(root, 'src/styles.css'));
-const stylesHash = crypto.createHash('sha256').update(stylesContent).digest('hex').slice(0, 8);
-const stylesName = `styles-${stylesHash}.css`;
-fs.writeFileSync(path.join(outDir, stylesName), stylesContent);
+// Bundle CSS through esbuild so that @import (fontsource) and url()
+// references to woff2 files in node_modules are resolved + emitted
+// alongside the CSS with content-hashed filenames.
+const cssResult = await esbuild.build({
+  entryPoints: [path.join(root, 'src/styles.css')],
+  bundle: true,
+  outdir: outDir,
+  entryNames: 'styles-[hash]',
+  assetNames: 'fonts/[name]-[hash]',
+  loader: { '.woff2': 'file', '.woff': 'file' },
+  minify: !devMode,
+  metafile: true,
+  logLevel: 'info',
+});
+const cssOutputKey = Object.keys(cssResult.metafile.outputs)
+  .find((p) => p.endsWith('.css'));
+if (!cssOutputKey) throw new Error('esbuild produced no .css output');
+const stylesName = path.basename(cssOutputKey);
 
 // Rewrite index.html with the hashed references.
 const htmlTemplate = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
