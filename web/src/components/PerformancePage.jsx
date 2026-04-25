@@ -2,7 +2,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
 import { AssetLogo } from './AssetLogo.jsx';
 import { PerformanceChart } from './Chart.jsx';
-import { fmtMoney, fmtPct } from '../format.js';
+import { fmtMoney, fmtPct, fmtDate } from '../format.js';
 import { api } from '../api.js';
 
 const TFS = ['1D', '1W', '1M', '3M', '6M', '1Y', 'ALL'];
@@ -55,6 +55,11 @@ export function PerformancePage({ privacy, currency }) {
   const pctBase = last ? last.c : 0;
   const periodPct = pctBase > 0 ? (periodPnL / pctBase) * 100 : 0;
 
+  // Today's change: most recent series step (last.value − prev.value).
+  const prev = series.length >= 2 ? series[series.length - 2] : null;
+  const dayChange = prev ? last.v - prev.v : 0;
+  const dayPct = prev && prev.v > 0 ? (dayChange / prev.v) * 100 : 0;
+
   return (
     <>
       <div class="hero">
@@ -93,15 +98,28 @@ export function PerformancePage({ privacy, currency }) {
         <div class="hero-side">
           <div class="stat">
             <div>
+              <div class="stat-label">Today</div>
+              <div class="stat-value" style={{ color: dayChange >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+                {privacy
+                  ? <span class="masked">{fmtMoney(dayChange, currency, { sign: true })}</span>
+                  : fmtMoney(dayChange, currency, { sign: true })}
+              </div>
+            </div>
+            <div class="stat-sub">
+              {prev ? <>{fmtPct(dayPct)} · as of {fmtDate(last.d)}</> : 'Not enough data yet'}
+            </div>
+          </div>
+          <div class="stat">
+            <div>
               <div class="stat-label">Cost basis</div>
               <div class="stat-value">
                 {privacy ? <span class="masked">{fmtMoney(perf.cost, currency)}</span> : fmtMoney(perf.cost, currency)}
               </div>
             </div>
-            <div class="stat-sub">
-              <div>Across {holdings?.length || 0} holdings</div>
+            <div class="stat-sub" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <span>Across {holdings?.length || 0} holdings</span>
               <button class="btn" onClick={refresh} disabled={refreshing}
-                style={{ marginTop: 8, fontSize: 12, padding: '4px 10px' }}>
+                style={{ fontSize: 11, padding: '3px 8px' }}>
                 {refreshing ? 'Refreshing…' : 'Refresh prices'}
               </button>
             </div>
