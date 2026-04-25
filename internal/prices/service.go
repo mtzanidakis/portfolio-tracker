@@ -4,11 +4,18 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/mtzanidakis/portfolio-tracker/internal/db"
 	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
 )
+
+// historyHourUTC is the wall-clock hour (UTC) at which the daily
+// history backfill kicks in. 22:00 UTC sits comfortably after every
+// major equity market closes (US 20-21:00 UTC) and Yahoo's chart
+// endpoint has had time to publish the day's official close.
+const historyHourUTC = 22
 
 // Service orchestrates price and FX refreshes, persisting the latest
 // values into the database for handlers to consume.
@@ -35,29 +42,46 @@ func New(d *db.DB, logger *slog.Logger, coinGeckoAPIKey string) *Service {
 	}
 }
 
-// RefreshAll fetches latest prices for every non-cash asset grouped by
-// provider, plus FX rates for all supported currencies, and writes them
-// to the database. It also backfills a year of daily history for each
-// provider (idempotent via upserts) so the performance chart has
-// something to plot. Per-provider failures are logged but do not abort.
+// RefreshAll runs both the history backfill and the live refresh in
+// sequence. Used at process startup and by the manual /prices/refresh
+// endpoint, where we want a one-shot full sync. The scheduled
+// background loops invoke refreshHistory and refreshLive independently
+// at their own cadences instead of going through this wrapper.
 func (s *Service) RefreshAll(ctx context.Context) error {
-	// History first, then latest. The two sources agree on old data but
-	// can disagree on today's value (Yahoo chart's intraday close /
-	// Frankfurter timeseries vs. the live quote). We want the live quote
-	// to win so the performance chart's final point matches the hero.
+	s.refreshHistory(ctx)
+	s.refreshLive(ctx)
+	return nil
+}
+
+// refreshLive fetches the latest quotes for every asset and the latest
+// FX rates. Cheap (one HTTP round-trip per provider) — this is the
+// loop that runs every liveEvery and updates today's snapshot. The
+// snapshot key is (symbol, midnight UTC), so successive calls within
+// the same day collapse via UPSERT — by midnight, today's row holds
+// the last live quote of the day, which is then locked to the
+// official close by the next history pass.
+func (s *Service) refreshLive(ctx context.Context) {
+	started := time.Now()
+	s.Logger.Info("live refresh starting")
+	prices, fxs := s.refreshPrices(ctx), s.refreshFx(ctx)
+	if prices > 0 || fxs > 0 {
+		s.Logger.Info("live refresh complete",
+			"prices_written", prices,
+			"fx_written", fxs,
+			"elapsed_ms", time.Since(started).Milliseconds())
+	}
+}
+
+// refreshHistory backfills daily price snapshots and FX rates over the
+// range covering every user's earliest transaction (floor: 1 year).
+// Heavy — runs once at startup and once every 24 hours after that.
+func (s *Service) refreshHistory(ctx context.Context) {
 	if err := s.refreshPriceHistory(ctx); err != nil {
 		s.Logger.Warn("price history refresh failed", "err", err)
-	}
-	if err := s.refreshPrices(ctx); err != nil {
-		s.Logger.Warn("price refresh failed", "err", err)
 	}
 	if err := s.refreshFxHistory(ctx); err != nil {
 		s.Logger.Warn("fx history refresh failed", "err", err)
 	}
-	if err := s.refreshFx(ctx); err != nil {
-		s.Logger.Warn("fx refresh failed", "err", err)
-	}
-	return nil
 }
 
 // refreshPriceHistory fills price_snapshots with daily closes going
@@ -107,12 +131,23 @@ func (s *Service) refreshPriceHistory(ctx context.Context) error {
 			continue
 		}
 		fetched++
+		// Yahoo timestamps each daily bar at the exchange's open time
+		// (e.g. 13:30 UTC for NYSE). We collapse to midnight UTC so
+		// the row shares a primary key with the live refresh's
+		// snapshot — the history pass effectively locks each past day
+		// to the official close. Today's bar is left to the live
+		// refresh, which keeps updating until the day ends.
+		todayMidnight := truncateDay(time.Now().UTC())
 		for _, snap := range snapshots {
+			at := truncateDay(snap.At)
+			if !at.Before(todayMidnight) {
+				continue
+			}
 			if err := s.DB.InsertPriceSnapshot(ctx, db.PriceSnapshot{
-				Symbol: a.Symbol, At: snap.At, Price: snap.Price,
+				Symbol: a.Symbol, At: at, Price: snap.Price,
 			}); err != nil {
 				s.Logger.Warn("persist snapshot failed",
-					"symbol", a.Symbol, "at", snap.At, "err", err)
+					"symbol", a.Symbol, "at", at, "err", err)
 				continue
 			}
 			persisted++
@@ -205,10 +240,16 @@ type assetRef struct {
 	providerID string
 }
 
-func (s *Service) refreshPrices(ctx context.Context) error {
+// refreshPrices fetches latest quotes per provider and writes both the
+// `prices_latest` row (current quote) and the day-bucketed snapshot
+// (collapsed via UPSERT to the last live quote of the day). Returns
+// the count of snapshot rows successfully written so the caller can
+// log totals; provider/persist failures are warned and skipped.
+func (s *Service) refreshPrices(ctx context.Context) int {
 	assets, err := s.DB.ListAssets(ctx)
 	if err != nil {
-		return err
+		s.Logger.Warn("list assets failed", "err", err)
+		return 0
 	}
 	byProvider := map[string][]assetRef{}
 	for _, a := range assets {
@@ -224,6 +265,7 @@ func (s *Service) refreshPrices(ctx context.Context) error {
 		})
 	}
 
+	var written int
 	for name, refs := range byProvider {
 		prov := s.providerByName(name)
 		if prov == nil {
@@ -253,36 +295,40 @@ func (s *Service) refreshPrices(ctx context.Context) error {
 			}); err != nil {
 				s.Logger.Warn("persist price failed", "symbol", r.symbol, "err", err)
 			}
-			// Mirror the live quote into the daily snapshot table so the
-			// performance chart's last point reflects today's price rather
-			// than yesterday's close (Yahoo's chart endpoint lags by ≥1d).
+			// Mirror the live quote into today's snapshot row. The next
+			// daily history pass will overwrite this with the official
+			// close from the chart endpoint once the day rolls over.
 			today := truncateDay(q.FetchedAt)
 			if err := s.DB.InsertPriceSnapshot(ctx, db.PriceSnapshot{
 				Symbol: r.symbol, At: today, Price: q.Price,
 			}); err != nil {
 				s.Logger.Warn("persist snapshot failed", "symbol", r.symbol, "err", err)
+				continue
 			}
+			written++
 		}
 	}
-	return nil
+	return written
 }
 
-func (s *Service) refreshFx(ctx context.Context) error {
+// refreshFx fetches the latest USD-base FX rates and writes both the
+// `fx_latest` row and today's day-bucketed snapshot. Returns the count
+// of snapshot rows written.
+func (s *Service) refreshFx(ctx context.Context) int {
 	rates, err := s.Fx.Fetch(ctx, domain.AllCurrencies)
 	if err != nil {
-		return err
+		s.Logger.Warn("fx fetch failed", "err", err)
+		return 0
 	}
 	now := time.Now().UTC()
 	today := truncateDay(now)
+	var written int
 	for c, r := range rates {
 		if err := s.DB.SetLatestFxRate(ctx, db.LatestFxRate{
 			Currency: c, USDRate: r, FetchedAt: now,
 		}); err != nil {
 			s.Logger.Warn("persist fx failed", "currency", c, "err", err)
 		}
-		// Same motivation as refreshPrices: keep the per-day FX table in
-		// sync with latest so valuations on `today` use the same rate in
-		// both the hero (latest) and the chart (snapshots).
 		if c == domain.USD {
 			continue
 		}
@@ -290,9 +336,11 @@ func (s *Service) refreshFx(ctx context.Context) error {
 			Currency: c, At: today, USDRate: r,
 		}); err != nil {
 			s.Logger.Warn("persist fx snapshot failed", "currency", c, "err", err)
+			continue
 		}
+		written++
 	}
-	return nil
+	return written
 }
 
 // truncateDay returns midnight UTC for the given instant. Mirrors
@@ -313,22 +361,76 @@ func (s *Service) providerByName(name string) PriceProvider {
 	}
 }
 
-// Run blocks until ctx is canceled, calling RefreshAll at start and then
-// every interval thereafter. Intended to be launched as a goroutine by
-// the server's main.
-func (s *Service) Run(ctx context.Context, interval time.Duration) {
-	_ = s.RefreshAll(ctx)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+// Run blocks until ctx is canceled, driving two independent refresh
+// loops:
+//
+//   - Live: every liveEvery, talks to the latest-quote endpoints only.
+//     Cheap; updates today's snapshot in place.
+//   - History: once at startup, then every day at historyHourUTC.
+//     Heavier — fetches a year+ of daily bars per asset and the FX
+//     range, then persists. Locks past days to the exchange's
+//     official close.
+//
+// Intended to be launched as a goroutine from the server's main.
+func (s *Service) Run(ctx context.Context, liveEvery time.Duration) {
+	// Bootstrap synchronously so a freshly-booted process serves
+	// requests with data already in place, and the operator's logs
+	// confirm both passes ran.
+	s.refreshHistory(ctx)
+	s.refreshLive(ctx)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		s.runLiveLoop(ctx, liveEvery)
+	}()
+	go func() {
+		defer wg.Done()
+		s.runHistoryLoop(ctx)
+	}()
+	wg.Wait()
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		s.Logger.Info("price service stopping", "reason", ctx.Err())
+	}
+}
+
+func (s *Service) runLiveLoop(ctx context.Context, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			if !errors.Is(ctx.Err(), context.Canceled) {
-				s.Logger.Info("price service stopping", "reason", ctx.Err())
-			}
 			return
-		case <-ticker.C:
-			_ = s.RefreshAll(ctx)
+		case <-t.C:
+			s.refreshLive(ctx)
 		}
 	}
+}
+
+// runHistoryLoop sleeps until the next historyHourUTC wall clock, runs
+// the daily backfill, then sleeps another 24h-ish. Recomputes the
+// target on every iteration so day rollovers (DST has no effect since
+// we anchor in UTC) and missed ticks don't drift the schedule.
+func (s *Service) runHistoryLoop(ctx context.Context) {
+	for {
+		next := nextDailyUTC(time.Now().UTC(), historyHourUTC, 0)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Until(next)):
+			s.refreshHistory(ctx)
+		}
+	}
+}
+
+// nextDailyUTC returns the next time-of-day in UTC at hour:minute that
+// is strictly after `now`. If now is exactly at the target, returns
+// the same time tomorrow.
+func nextDailyUTC(now time.Time, hour, minute int) time.Time {
+	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.UTC)
+	if !target.After(now) {
+		target = target.Add(24 * time.Hour)
+	}
+	return target
 }
