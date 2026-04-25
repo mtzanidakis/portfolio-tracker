@@ -54,7 +54,7 @@ func run() int {
 		return 2
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	logger.Info("portfolio-tracker starting",
 		"version", version.Version, "addr", *addr, "db", *dbPath,
 		"refresh", *refreshEvery, "session_lifetime", lifetime)
