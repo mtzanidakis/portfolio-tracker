@@ -59,3 +59,20 @@ jobs:
           else
             echo "web/ not yet scaffolded; skipping"
           fi
+
+  test-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Test web
+        run: |
+          cd web
+          npm ci
+          npm test

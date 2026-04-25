@@ -1,6 +1,6 @@
 VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
-.PHONY: build run stop logs shell admin test lint lint-web ptagent-build clean
+.PHONY: build run stop logs shell admin test test-web lint lint-web ptagent-build clean
 
 # --- container image ---
 build:
@@ -43,6 +43,10 @@ lint:
 lint-web:
 	docker run --rm -v $(PWD)/web:/web -w /web node:24-alpine \
 		sh -c "npm ci --silent && echo 'no lint script configured yet'"
+
+test-web:
+	docker run --rm -v $(PWD)/web:/web -w /web node:24-alpine \
+		sh -c "npm ci --silent && npm test --silent"
 
 # --- local ptagent build for development (standalone; normally via goreleaser) ---
 ptagent-build:
