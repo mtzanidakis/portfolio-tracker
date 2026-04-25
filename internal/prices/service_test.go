@@ -156,3 +156,78 @@ func TestService_Run_ExitsOnCancel(t *testing.T) {
 		t.Fatal("Run did not exit on cancel")
 	}
 }
+
+// Tests for the schedule + provider-range helpers. Pure functions, no
+// I/O — kept in this file rather than a new one because they share
+// package internals.
+
+func TestNextDailyUTC(t *testing.T) {
+	cases := []struct {
+		name string
+		now  time.Time
+		hour int
+		want time.Time
+	}{
+		{
+			name: "before today's target",
+			now:  time.Date(2026, 4, 25, 12, 0, 0, 0, time.UTC),
+			hour: 22,
+			want: time.Date(2026, 4, 25, 22, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "after today's target rolls to tomorrow",
+			now:  time.Date(2026, 4, 25, 23, 0, 0, 0, time.UTC),
+			hour: 22,
+			want: time.Date(2026, 4, 26, 22, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "exactly at target also rolls forward",
+			now:  time.Date(2026, 4, 25, 22, 0, 0, 0, time.UTC),
+			hour: 22,
+			want: time.Date(2026, 4, 26, 22, 0, 0, 0, time.UTC),
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := nextDailyUTC(c.now, c.hour, 0)
+			if !got.Equal(c.want) {
+				t.Errorf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestYahooRangeFor(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		from time.Time
+		want string
+	}{
+		{time.Time{}, "1y"},
+		{now.AddDate(0, -6, 0), "1y"},
+		{now.AddDate(-1, -6, 0), "2y"},
+		{now.AddDate(-3, 0, 0), "5y"},
+		{now.AddDate(-7, 0, 0), "10y"},
+		{now.AddDate(-15, 0, 0), "max"},
+	}
+	for _, c := range cases {
+		got := yahooRangeFor(c.from)
+		if got != c.want {
+			t.Errorf("from=%v: got %q, want %q", c.from, got, c.want)
+		}
+	}
+}
+
+func TestCoingeckoDaysFor(t *testing.T) {
+	now := time.Now()
+	if got := coingeckoDaysFor(time.Time{}); got != "365" {
+		t.Errorf("zero from: got %q, want 365", got)
+	}
+	if got := coingeckoDaysFor(now.AddDate(0, -3, 0)); got != "365" {
+		t.Errorf("3-month range: got %q, want 365 (floor)", got)
+	}
+	got := coingeckoDaysFor(now.AddDate(-2, 0, 0))
+	if got == "365" {
+		t.Errorf("2-year range: got %q, want >365", got)
+	}
+}
