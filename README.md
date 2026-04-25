@@ -4,9 +4,10 @@ Self-hosted portfolio tracker for stocks, ETFs, and crypto. Multi-user,
 multi-currency, PWA-installable on Android.
 
 - **Backend:** Go 1.26.2, stdlib-first, pure-Go SQLite (`modernc.org/sqlite`), single static binary (CGO-free).
-- **Frontend:** Preact + esbuild, embedded with `go:embed`. Three aesthetics (technical / editorial / forest), dark + light themes, privacy mask.
+- **Frontend:** Preact + esbuild, embedded with `go:embed`. Three aesthetics (technical / editorial / forest), dark + light themes, privacy mask, custom date format.
 - **Auth:** password + session cookie for the browser (argon2id, CSRF double-submit). API tokens for `ptagent` / automation — self-serviced from the UI.
-- **Prices:** Yahoo Finance (stocks/ETFs) + CoinGecko (crypto, optional free API key). FX via Frankfurter (ECB).
+- **Prices:** Yahoo Finance (stocks/ETFs) + CoinGecko (crypto, optional free API key). FX via Frankfurter (ECB). History backfilled dynamically from the earliest transaction; live quotes refreshed every 15 min, official closes locked once a day at 22:00 UTC.
+- **Import / Export:** import from Ghostfolio JSON via a guided wizard (review per-account / per-asset matches before applying); export full snapshot (JSON) or transactions-only (CSV).
 - **Deploy:** one Alpine container (`ptd` server + `ptadmin` admin inside). `ptagent` CLI released separately via goreleaser.
 
 ## Quick start
@@ -28,8 +29,12 @@ xdg-open http://localhost:8082
 ```
 
 Inside the app, the avatar menu (bottom-left of the sidebar) lets you
-edit profile, change password, and create/revoke API tokens for
-`ptagent` and other automation.
+edit profile, open Settings (base currency, aesthetic, date format),
+and create/revoke API tokens for `ptagent` and other automation.
+
+The sidebar's **Import / Export** entry runs the import wizard
+(currently Ghostfolio JSON; pluggable for future sources) and serves
+backups: full-snapshot JSON or transactions-only CSV.
 
 ### API-only setup (no browser access)
 
@@ -59,7 +64,7 @@ Server env vars (CLI flags override when both are set):
 |----------------------------|----------------------|---------------------------------------------------|
 | `PT_ADDR`                  | `:8082`              | HTTP listen address                               |
 | `PT_DB`                    | `./data/pt.db`       | SQLite database path                              |
-| `PT_PRICE_REFRESH_INTERVAL`| `15m`                | background refresh cadence (Go duration)          |
+| `PT_PRICE_REFRESH_INTERVAL`| `15m`                | live-quote refresh cadence (Go duration). The daily history backfill runs once at boot and again every 24h at 22:00 UTC. |
 | `PT_SESSION_LIFETIME`      | `30d`                | browser session lifetime (accepts `30d` or `720h`)|
 | `PT_COINGECKO_API_KEY`     | *(unset)*            | optional Demo tier key for dedicated quota        |
 | `TZ`                       | `Europe/Athens`      | container timezone (for log timestamps)           |
@@ -79,14 +84,16 @@ cmd/
   ptadmin/    Admin CLI (inside container)
   ptagent/    API client CLI (outside, goreleaser)
 internal/
-  api/        HTTP handlers + router
-  auth/       password + session + CSRF + Bearer middleware
-  db/         SQLite + migrations + repositories
-  domain/     core types (User, Account, Asset, Transaction, Session, enums)
-  portfolio/  pure logic: holdings, PnL, valuation
-  prices/     Yahoo + CoinGecko + Frankfurter + refresh service
-  version/    build-time version string
-  web/        go:embed static handler
+  api/         HTTP handlers + router
+  auth/        password + session + CSRF + Bearer middleware
+  db/          SQLite + migrations + repositories + atomic ApplyImport
+  domain/      core types (User, Account, Asset, Transaction, Session, enums)
+  exporters/   JSON snapshot + transactions CSV writers
+  importers/   normalised ImportPlan + per-source parsers (Ghostfolio today)
+  portfolio/   pure logic: holdings, PnL, valuation, daily series
+  prices/      Yahoo + CoinGecko + Frankfurter + split live/history refresh
+  version/     build-time version string
+  web/         go:embed static handler
 skill/
   SKILL.md    Claude Code skill for ptagent
 web/          Preact source (bundled into internal/web/dist/ at build time)
