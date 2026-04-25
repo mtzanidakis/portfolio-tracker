@@ -50,12 +50,14 @@ describe('BrandMark', () => {
     const svg = container.querySelector('svg');
     expect(svg.getAttribute('viewBox')).toBe('0 0 64 64');
     expect(svg.getAttribute('width')).toBe('28');
-    expect(svg.querySelectorAll('rect').length).toBeGreaterThanOrEqual(4); // bg + 3 bars
+    // 3 bars (no inner background — that lives in the .brand-mark wrapper)
+    // plus a faint trend-line path.
+    expect(svg.querySelectorAll('rect').length).toBe(3);
     expect(svg.querySelector('path')).not.toBeNull();
   });
 
-  it('defaults to a 28-unit size when no prop is passed', () => {
+  it('defaults to a 20-unit size when no prop is passed', () => {
     const { container } = render(<BrandMark />);
-    expect(container.querySelector('svg').getAttribute('width')).toBe('28');
+    expect(container.querySelector('svg').getAttribute('width')).toBe('20');
   });
 });

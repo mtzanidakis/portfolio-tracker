@@ -327,12 +327,19 @@ input, select, textarea {
   padding: 0 8px;
 }
 
-.brand svg {
+.brand-mark {
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
-  display: block;
   border-radius: 7px;
+  background: var(--terra);
+  display: grid;
+  place-items: center;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.15);
+  /* drives currentColor inside the inline SVG so bars adapt to theme */
+  color: var(--bg-elev);
 }
+.brand-mark svg { display: block; }
 .brand-name {
   font-family: var(--font-serif);
   font-size: 16px;

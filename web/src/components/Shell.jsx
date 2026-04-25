@@ -22,7 +22,7 @@ export function Sidebar({ page, setPage, user, open, onClose, onProfile, onSetti
       <div class={`sidebar-backdrop ${open ? 'on' : ''}`} onClick={onClose} />
       <aside class={`sidebar ${open ? 'open' : ''}`}>
         <div class="brand">
-          <BrandMark size={28} />
+          <div class="brand-mark"><BrandMark size={20} /></div>
           <div class="brand-name">Portfolio Tracker</div>
         </div>
         <div class="nav">
