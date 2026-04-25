@@ -28,3 +28,19 @@ export function Icon({ name, size = 16 }) {
   };
   return <svg {...common}>{paths[name] || null}</svg>;
 }
+
+// Standalone brand mark — three ascending bars + a faint trend line over a
+// rounded square. Uses currentColor for the bars + faint guide line so the
+// component inherits palette via CSS.
+export function BrandMark({ size = 28 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <rect width="64" height="64" rx="14" fill="var(--terra)" />
+      <path d="M14 24l14-8 14 4 8-6"
+        stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.4" />
+      <rect x="14" y="36" width="8" height="14" rx="2" fill="#fff" opacity="0.55" />
+      <rect x="28" y="28" width="8" height="22" rx="2" fill="#fff" opacity="0.78" />
+      <rect x="42" y="18" width="8" height="32" rx="2" fill="#fff" />
+    </svg>
+  );
+}

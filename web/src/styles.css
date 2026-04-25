@@ -245,15 +245,6 @@ html[data-aesthetic="editorial"] .nav-item.active {
 html[data-aesthetic="editorial"] .btn.primary {
   border-radius: 2px;
 }
-html[data-aesthetic="editorial"] .brand-mark {
-  background: var(--text);
-  border-radius: 2px;
-}
-html[data-aesthetic="editorial"] .brand-mark::after {
-  background: var(--bg-elev);
-  border-radius: 0;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -323,22 +314,11 @@ input, select, textarea {
   padding: 0 8px;
 }
 
-.brand-mark {
-  width: 28px;
-  height: 28px;
+.brand svg {
+  flex: 0 0 auto;
+  display: block;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--terra) 0%, var(--ochre) 100%);
-  position: relative;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
-}
-.brand-mark::after {
-  content: "";
-  position: absolute;
-  inset: 6px 6px auto auto;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--bg-elev);
-  opacity: 0.9;
+  box-shadow: var(--shadow-sm);
 }
 .brand-name {
   font-family: var(--font-serif);

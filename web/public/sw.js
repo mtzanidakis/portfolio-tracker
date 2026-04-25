@@ -2,7 +2,7 @@
 // so they are immutable and safe to cache-first forever. The few unhashed
 // entry points (index.html, manifest.json, the icon) go network-first so
 // deploys propagate immediately.
-const CACHE = 'pt-static-v3';
+const CACHE = 'pt-static-v4';
 
 const NETWORK_FIRST = new Set([
   '/',

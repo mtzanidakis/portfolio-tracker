@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { Icon } from './Icons.jsx';
+import { Icon, BrandMark } from './Icons.jsx';
 import { UserMenu } from './UserMenu.jsx';
 import { fmtMoney } from '../format.js';
 
@@ -22,8 +22,8 @@ export function Sidebar({ page, setPage, user, open, onClose, onProfile, onSetti
       <div class={`sidebar-backdrop ${open ? 'on' : ''}`} onClick={onClose} />
       <aside class={`sidebar ${open ? 'open' : ''}`}>
         <div class="brand">
-          <div class="brand-mark" />
-          <div class="brand-name">Portfolio</div>
+          <BrandMark size={28} />
+          <div class="brand-name">Portfolio Tracker</div>
         </div>
         <div class="nav">
           <div class="nav-label">Portfolio</div>

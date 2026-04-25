@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/preact';
-import { Icon } from './Icons.jsx';
+import { Icon, BrandMark } from './Icons.jsx';
 
 // Pulled from Icons.jsx — kept here so adding a new icon flags this
 // test file as the place to extend coverage.
@@ -41,5 +41,21 @@ describe('Icon', () => {
     const svg = container.querySelector('svg');
     expect(svg).not.toBeNull();
     expect(svg.children.length).toBe(0);
+  });
+});
+
+describe('BrandMark', () => {
+  it('renders an svg with the 64-unit viewBox and the three ascending bars', () => {
+    const { container } = render(<BrandMark size={28} />);
+    const svg = container.querySelector('svg');
+    expect(svg.getAttribute('viewBox')).toBe('0 0 64 64');
+    expect(svg.getAttribute('width')).toBe('28');
+    expect(svg.querySelectorAll('rect').length).toBeGreaterThanOrEqual(4); // bg + 3 bars
+    expect(svg.querySelector('path')).not.toBeNull();
+  });
+
+  it('defaults to a 28-unit size when no prop is passed', () => {
+    const { container } = render(<BrandMark />);
+    expect(container.querySelector('svg').getAttribute('width')).toBe('28');
   });
 });
