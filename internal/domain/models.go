@@ -74,7 +74,9 @@ type Transaction struct {
 }
 
 // Token is an API access credential. Only the hash is persisted; the raw
-// token is returned exactly once, at creation time.
+// token is returned exactly once, at creation time. DeletedAt is the
+// soft-delete marker — soft-deleted rows are filtered out of every read
+// path, so they only ever appear here when fetched by id directly.
 type Token struct {
 	ID         int64      `json:"id"`
 	UserID     int64      `json:"user_id"`
@@ -83,4 +85,5 @@ type Token struct {
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	DeletedAt  *time.Time `json:"deleted_at,omitempty"`
 }

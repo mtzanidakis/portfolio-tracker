@@ -306,9 +306,10 @@ func TestMeTokens_SelfServiceCRUD(t *testing.T) {
 		t.Errorf("list: %+v", list)
 	}
 
-	// Delete.
-	req, _ = http.NewRequestWithContext(t.Context(), http.MethodDelete,
-		e.srv.URL+"/api/v1/me/tokens/"+strconv.FormatInt(created.ID, 10), nil)
+	// Revoke (kills the credential, row stays in the user's list).
+	req, _ = http.NewRequestWithContext(t.Context(), http.MethodPost,
+		e.srv.URL+"/api/v1/me/tokens/"+strconv.FormatInt(created.ID, 10)+"/revoke",
+		bytes.NewReader(nil))
 	req.Header.Set(auth.CSRFHeaderName, csrf)
 	resp, _ = client.Do(req)
 	defer func() { _ = resp.Body.Close() }()
@@ -316,13 +317,32 @@ func TestMeTokens_SelfServiceCRUD(t *testing.T) {
 		t.Errorf("revoke: %d", resp.StatusCode)
 	}
 
-	// Token now appears revoked.
+	// Token now appears revoked but is still listed.
 	req, _ = http.NewRequestWithContext(t.Context(), http.MethodGet,
 		e.srv.URL+"/api/v1/me/tokens", nil)
 	resp, _ = client.Do(req)
 	defer func() { _ = resp.Body.Close() }()
 	_ = json.NewDecoder(resp.Body).Decode(&list)
-	if list[0].RevokedAt == nil {
-		t.Error("token should be marked revoked")
+	if len(list) != 1 || list[0].RevokedAt == nil {
+		t.Errorf("token should be marked revoked, got %+v", list)
+	}
+
+	// Soft-delete drops the row entirely from listings.
+	req, _ = http.NewRequestWithContext(t.Context(), http.MethodDelete,
+		e.srv.URL+"/api/v1/me/tokens/"+strconv.FormatInt(created.ID, 10), nil)
+	req.Header.Set(auth.CSRFHeaderName, csrf)
+	resp, _ = client.Do(req)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("delete: %d", resp.StatusCode)
+	}
+
+	req, _ = http.NewRequestWithContext(t.Context(), http.MethodGet,
+		e.srv.URL+"/api/v1/me/tokens", nil)
+	resp, _ = client.Do(req)
+	defer func() { _ = resp.Body.Close() }()
+	_ = json.NewDecoder(resp.Body).Decode(&list)
+	if len(list) != 0 {
+		t.Errorf("deleted token should not appear in list, got %+v", list)
 	}
 }

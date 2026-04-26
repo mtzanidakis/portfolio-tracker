@@ -7,6 +7,7 @@ vi.mock('../api.js', () => ({
     listTokens:  vi.fn(),
     createToken: vi.fn(),
     revokeToken: vi.fn(),
+    deleteToken: vi.fn(),
   },
 }));
 
@@ -31,6 +32,7 @@ beforeEach(() => {
   api.listTokens.mockResolvedValue([ACTIVE, REVOKED]);
   api.createToken.mockResolvedValue({ id: 3, name: 'new-one', token: 'pt_xyz_secret' });
   api.revokeToken.mockResolvedValue(null);
+  api.deleteToken.mockResolvedValue(null);
 });
 
 describe('TokensModal — listing', () => {
@@ -185,5 +187,55 @@ describe('TokensModal — revoke', () => {
 
     await user.click(screen.getByRole('button', { name: 'Revoke' }));
     await waitFor(() => expect(screen.getByText('not found')).toBeInTheDocument());
+  });
+});
+
+describe('TokensModal — delete', () => {
+  let originalConfirm;
+  beforeEach(() => {
+    originalConfirm = window.confirm;
+  });
+  afterEach(() => {
+    window.confirm = originalConfirm;
+  });
+
+  it('every row gets a Delete button — even revoked ones', async () => {
+    render(<TokensModal onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('laptop-cli')).toBeInTheDocument());
+    // Two rows in the fixture → two Delete buttons.
+    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2);
+  });
+
+  it('cancelled confirm aborts the delete', async () => {
+    window.confirm = vi.fn().mockReturnValue(false);
+    const user = userEvent.setup();
+    render(<TokensModal onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('laptop-cli')).toBeInTheDocument());
+
+    await user.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
+    expect(window.confirm).toHaveBeenCalled();
+    expect(api.deleteToken).not.toHaveBeenCalled();
+  });
+
+  it('confirmed delete calls api.deleteToken with the row id and reloads', async () => {
+    window.confirm = vi.fn().mockReturnValue(true);
+    const user = userEvent.setup();
+    render(<TokensModal onClose={vi.fn()} />);
+    await waitFor(() => expect(api.listTokens).toHaveBeenCalledOnce());
+
+    await user.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
+    await waitFor(() => expect(api.deleteToken).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(api.listTokens).toHaveBeenCalledTimes(2));
+  });
+
+  it('renders the API error if deleteToken rejects', async () => {
+    window.confirm = vi.fn().mockReturnValue(true);
+    api.deleteToken.mockRejectedValueOnce(new Error('boom'));
+    const user = userEvent.setup();
+    render(<TokensModal onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('laptop-cli')).toBeInTheDocument());
+
+    await user.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
+    await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
   });
 });

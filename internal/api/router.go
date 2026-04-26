@@ -80,7 +80,8 @@ func NewRouter(d *db.DB, sessionLifetime time.Duration, opts ...Option) *http.Se
 
 	mux.Handle("GET /api/v1/me/tokens", protect(listMyTokensHandler(d)))
 	mux.Handle("POST /api/v1/me/tokens", protect(createMyTokenHandler(d)))
-	mux.Handle("DELETE /api/v1/me/tokens/{id}", protect(revokeMyTokenHandler(d)))
+	mux.Handle("POST /api/v1/me/tokens/{id}/revoke", protect(revokeMyTokenHandler(d)))
+	mux.Handle("DELETE /api/v1/me/tokens/{id}", protect(deleteMyTokenHandler(d)))
 
 	mux.Handle("GET /api/v1/accounts", protect(listAccountsHandler(d)))
 	mux.Handle("POST /api/v1/accounts", protect(createAccountHandler(d)))

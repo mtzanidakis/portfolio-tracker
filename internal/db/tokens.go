@@ -29,26 +29,32 @@ func (db *DB) CreateToken(ctx context.Context, tok *domain.Token) error {
 	).Scan(&tok.CreatedAt)
 }
 
-// GetTokenByHash returns the (non-revoked) token matching the given hash, or
-// ErrNotFound if no active token exists.
+// GetTokenByHash returns the (live, non-revoked) token matching the
+// given hash, or ErrNotFound. Soft-deleted and revoked rows are
+// excluded so auth never resurrects a credential the user has retired.
 func (db *DB) GetTokenByHash(ctx context.Context, hash string) (*domain.Token, error) {
 	return db.scanToken(ctx,
-		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at
-		   FROM tokens WHERE hash = ? AND revoked_at IS NULL`, hash)
+		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at, deleted_at
+		   FROM tokens
+		   WHERE hash = ? AND revoked_at IS NULL AND deleted_at IS NULL`, hash)
 }
 
-// GetToken returns a token by id regardless of revocation.
+// GetToken returns a token by id regardless of revocation, but still
+// excludes soft-deleted rows.
 func (db *DB) GetToken(ctx context.Context, id int64) (*domain.Token, error) {
 	return db.scanToken(ctx,
-		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at
-		   FROM tokens WHERE id = ?`, id)
+		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at, deleted_at
+		   FROM tokens WHERE id = ? AND deleted_at IS NULL`, id)
 }
 
-// ListTokens returns all tokens for a user (including revoked).
+// ListTokens returns all live tokens for a user (including revoked,
+// excluding soft-deleted).
 func (db *DB) ListTokens(ctx context.Context, userID int64) ([]*domain.Token, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at
-		   FROM tokens WHERE user_id = ? ORDER BY id`, userID)
+		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at, deleted_at
+		   FROM tokens
+		   WHERE user_id = ? AND deleted_at IS NULL
+		   ORDER BY id`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("query tokens: %w", err)
 	}
@@ -74,20 +80,37 @@ func (db *DB) TouchToken(ctx context.Context, id int64) error {
 }
 
 // RevokeToken marks a token as revoked. Re-revoking a revoked token is a no-op.
+// Soft-deleted tokens are treated as not-found.
 func (db *DB) RevokeToken(ctx context.Context, id int64) error {
 	res, err := db.ExecContext(ctx,
 		`UPDATE tokens SET revoked_at = CURRENT_TIMESTAMP
-		   WHERE id = ? AND revoked_at IS NULL`, id)
+		   WHERE id = ? AND revoked_at IS NULL AND deleted_at IS NULL`, id)
 	if err != nil {
 		return fmt.Errorf("revoke token: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		// Distinguish between "not found" and "already revoked".
+		// Distinguish "not found / already deleted" from "already revoked".
 		var exists int
 		if err := db.QueryRowContext(ctx,
-			"SELECT 1 FROM tokens WHERE id = ?", id).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+			"SELECT 1 FROM tokens WHERE id = ? AND deleted_at IS NULL", id).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
+	}
+	return nil
+}
+
+// SoftDeleteToken marks a token as deleted. Subsequent reads filter it
+// out, so the token disappears from the user's view and from auth. The
+// row itself stays for audit / forensics.
+func (db *DB) SoftDeleteToken(ctx context.Context, id int64) error {
+	res, err := db.ExecContext(ctx,
+		`UPDATE tokens SET deleted_at = CURRENT_TIMESTAMP
+		   WHERE id = ? AND deleted_at IS NULL`, id)
+	if err != nil {
+		return fmt.Errorf("soft-delete token: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
 	}
 	return nil
 }
@@ -101,9 +124,10 @@ func scanTokenRow(r rowScanner) (*domain.Token, error) {
 		tok       domain.Token
 		lastUsed  sql.NullTime
 		revokedAt sql.NullTime
+		deletedAt sql.NullTime
 	)
 	if err := r.Scan(&tok.ID, &tok.UserID, &tok.Name, &tok.Hash, &tok.CreatedAt,
-		&lastUsed, &revokedAt); err != nil {
+		&lastUsed, &revokedAt, &deletedAt); err != nil {
 		return nil, fmt.Errorf("scan token: %w", err)
 	}
 	if lastUsed.Valid {
@@ -113,6 +137,10 @@ func scanTokenRow(r rowScanner) (*domain.Token, error) {
 	if revokedAt.Valid {
 		t := revokedAt.Time
 		tok.RevokedAt = &t
+	}
+	if deletedAt.Valid {
+		t := deletedAt.Time
+		tok.DeletedAt = &t
 	}
 	return &tok, nil
 }

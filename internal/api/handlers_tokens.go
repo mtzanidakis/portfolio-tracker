@@ -101,3 +101,27 @@ func revokeMyTokenHandler(d *db.DB) http.HandlerFunc {
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
+
+// deleteMyTokenHandler soft-deletes the row so it disappears from the
+// user's list. Revoke + delete are separate gestures: revoke kills the
+// credential while keeping the audit row; delete hides the row entirely.
+func deleteMyTokenHandler(d *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFrom(r.Context())
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		tok, err := d.GetToken(r.Context(), id)
+		if err != nil || tok.UserID != u.ID {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		if err := d.SoftDeleteToken(r.Context(), id); err != nil {
+			writeDBError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}

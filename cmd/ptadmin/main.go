@@ -28,6 +28,7 @@ Commands:
   token create   --user EMAIL --name NAME
   token list     [--user EMAIL]
   token revoke   --id ID
+  token delete   --id ID
 
   db migrate
   db backup      --to PATH

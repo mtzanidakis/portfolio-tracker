@@ -22,6 +22,8 @@ func runToken(ctx context.Context, conn *db.DB, sub string, args []string) int {
 		return tokenList(ctx, conn, args)
 	case "revoke":
 		return tokenRevoke(ctx, conn, args)
+	case "delete":
+		return tokenDelete(ctx, conn, args)
 	default:
 		return errf("token: unknown subcommand %q", sub)
 	}
@@ -117,6 +119,22 @@ func tokenRevoke(ctx context.Context, conn *db.DB, args []string) int {
 		return errf("token revoke: %v", err)
 	}
 	fmt.Printf("token revoked: id=%d\n", *id)
+	return 0
+}
+
+func tokenDelete(ctx context.Context, conn *db.DB, args []string) int {
+	fs := flag.NewFlagSet("token delete", flag.ContinueOnError)
+	id := fs.Int64("id", 0, "token id (required)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *id == 0 {
+		return errf("token delete: --id is required")
+	}
+	if err := conn.SoftDeleteToken(ctx, *id); err != nil {
+		return errf("token delete: %v", err)
+	}
+	fmt.Printf("token deleted: id=%d\n", *id)
 	return 0
 }
 

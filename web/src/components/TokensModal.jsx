@@ -54,6 +54,16 @@ export function TokensModal({ onClose }) {
     }
   };
 
+  const remove = async (id) => {
+    if (!confirm('Delete this token from the list? The row is hidden but kept for audit.')) return;
+    try {
+      await api.deleteToken(id);
+      await load();
+    } catch (e) {
+      setErr(e.message || 'Failed to delete token.');
+    }
+  };
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(justCreated.token);
@@ -142,11 +152,15 @@ export function TokensModal({ onClose }) {
                       ? <span style={{ color: 'var(--neg)', fontSize: 12 }}>Revoked</span>
                       : <span style={{ color: 'var(--pos)', fontSize: 12 }}>Active</span>}
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     {!t.revoked_at && (
                       <button class="btn" onClick={() => revoke(t.id)}
-                        style={{ fontSize: 12, padding: '4px 10px' }}>Revoke</button>
+                        style={{ fontSize: 12, padding: '4px 10px', marginRight: 6 }}>Revoke</button>
                     )}
+                    <button class="icon-btn" title="Delete" aria-label="Delete"
+                      onClick={() => remove(t.id)}>
+                      <Icon name="trash" />
+                    </button>
                   </td>
                 </tr>
               ))}
