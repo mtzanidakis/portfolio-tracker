@@ -1,14 +1,15 @@
 # Portfolio Tracker
 
-Self-hosted portfolio tracker for stocks, ETFs, and crypto. Multi-user,
-multi-currency, PWA-installable on Android.
+## Features
 
-- **Backend:** Go 1.26.2, stdlib-first, pure-Go SQLite (`modernc.org/sqlite`), single static binary (CGO-free).
-- **Frontend:** Preact + esbuild, embedded with `go:embed`. Three aesthetics (technical / editorial / forest), dark + light themes, privacy mask, custom date format.
-- **Auth:** password + session cookie for the browser (argon2id, CSRF double-submit). API tokens for `ptagent` / automation — self-serviced from the UI.
-- **Prices:** Yahoo Finance (stocks/ETFs) + CoinGecko (crypto, optional free API key). FX via Frankfurter (ECB). History backfilled dynamically from the earliest transaction; live quotes refreshed every 15 min, official closes locked once a day at 22:00 UTC.
-- **Import / Export:** import from Ghostfolio JSON via a guided wizard (review per-account / per-asset matches before applying); export full snapshot (JSON) or transactions-only (CSV).
-- **Deploy:** one Alpine container (`ptd` server + `ptadmin` admin inside). `ptagent` CLI released separately via goreleaser.
+- Track stocks, ETFs, and crypto across multiple accounts.
+- Multi-currency: every transaction locks its FX rate at trade time, so historical PnL stays accurate as today's rates drift.
+- Performance dashboard with value, cost basis, realised + unrealised PnL, and interactive charts across 1D / 1W / 1M / 3M / 6M / 1Y / ALL.
+- Allocation breakdowns by asset class, account, and currency.
+- Auto-refreshed prices (Yahoo Finance, CoinGecko) and FX (ECB) — no manual entry once a transaction is logged.
+- Import from Ghostfolio JSON via a guided wizard (per-account / per-asset review before applying); export full-snapshot JSON or transactions CSV.
+- Multi-user with browser session auth and API tokens for `ptagent` / automation, self-serviced from the UI.
+- Self-hosted, PWA-installable on Android, with three aesthetics (technical / editorial / forest), dark + light themes, a privacy mask, and a customisable date format.
 
 ## Quick start
 
@@ -75,6 +76,15 @@ Server env vars (CLI flags override when both are set):
 |--------------|-------------------------|
 | `PT_API_URL` | `http://localhost:8082` |
 | `PT_TOKEN`   | *(required)*            |
+
+## Stack
+
+- **Backend:** Go 1.26.2, stdlib-first, pure-Go SQLite (`modernc.org/sqlite`), single static binary (CGO-free).
+- **Frontend:** Preact + esbuild, embedded with `go:embed`. Three aesthetics (technical / editorial / forest), dark + light themes, privacy mask, custom date format.
+- **Auth:** password + session cookie for the browser (argon2id, CSRF double-submit). API tokens for `ptagent` / automation — self-serviced from the UI.
+- **Prices:** Yahoo Finance (stocks/ETFs) + CoinGecko (crypto, optional free API key). FX via Frankfurter (ECB). History backfilled dynamically from the earliest transaction; live quotes refreshed every 15 min, official closes locked once a day at 22:00 UTC.
+- **Import / Export:** import from Ghostfolio JSON via a guided wizard (review per-account / per-asset matches before applying); export full snapshot (JSON) or transactions-only (CSV).
+- **Deploy:** one Alpine container (`ptd` server + `ptadmin` admin inside). `ptagent` CLI released separately via goreleaser.
 
 ## Layout
 
