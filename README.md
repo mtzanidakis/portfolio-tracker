@@ -11,12 +11,15 @@
 - Multi-user with browser session auth and API tokens for `ptagent` / automation, self-serviced from the UI.
 - Self-hosted, PWA-installable on Android, with three aesthetics (technical / editorial / forest), dark + light themes, a privacy mask, and a customisable date format.
 
-## Quick start
+## Quick start (local development)
+
+Builds the image from source and runs it on `localhost:8082`. For a
+real deployment, see [Production deployment](#production-deployment)
+below.
 
 ```bash
-# 1. Pick a compose overlay (symlink)
-ln -sf compose.override.yaml-dev compose.override.yaml    # local build
-# or:  ln -sf compose.override.yaml-prod compose.override.yaml
+# 1. Symlink the dev compose overlay
+ln -sf compose.override.yaml-dev compose.override.yaml
 
 # 2. Build + start
 make build
@@ -43,6 +46,48 @@ backups: full-snapshot JSON or transactions-only CSV.
 make admin ARGS="user add --email bot@example.com --name Bot --no-password"
 make admin ARGS="token create --user bot@example.com --name default"
 # ↑ token is printed exactly once.
+```
+
+## Production deployment
+
+Tagged releases publish a multi-arch image to
+`ghcr.io/mtzanidakis/portfolio-tracker`. The prod overlay pairs it with
+a [tsrp](https://github.com/mtzanidakis/tsrp) sidecar so the app is
+reachable only through your Tailscale network — no public ports.
+
+1. Symlink the prod overlay:
+
+   ```bash
+   ln -sf compose.override.yaml-prod compose.override.yaml
+   ```
+
+2. Add the Tailscale variables to `.env`:
+
+   ```
+   HOSTNAME=portfolio
+   TS_AUTHKEY=tskey-auth-...
+   ```
+
+   `HOSTNAME` is the Tailscale machine name the app will register as.
+   Generate `TS_AUTHKEY` at
+   <https://login.tailscale.com/admin/settings/keys>.
+
+3. Pull and start:
+
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+
+The app will be available at `https://<hostname>.<your-tailnet>.ts.net`.
+The tsrp sidecar persists its Tailscale state under `./config/tsrp/`,
+so back that directory up alongside `./data/` (the SQLite database).
+
+To upgrade, pull the new image tag and restart:
+
+```bash
+docker compose pull
+docker compose up -d
 ```
 
 ## Auth model
