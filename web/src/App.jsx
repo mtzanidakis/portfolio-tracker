@@ -117,6 +117,12 @@ export function App() {
         onClick={() => setTheme(appliedTheme === 'dark' ? 'light' : 'dark')}>
         <Icon name={appliedTheme === 'dark' ? 'sun' : 'moon'} />
       </button>
+      <a class="icon-btn"
+        href="https://github.com/mtzanidakis/portfolio-tracker"
+        target="_blank" rel="noopener noreferrer"
+        title="View on GitHub" aria-label="View on GitHub">
+        <Icon name="github" />
+      </a>
       <button class="btn primary btn-add-tx" onClick={() => setShowAddTx(true)}
         aria-label="Add transaction" title="Add transaction">
         <Icon name="plus" />
