@@ -67,7 +67,8 @@ export const api = {
 
   // --- self-service tokens ---
   listTokens:   ()       => request('GET',    '/api/v1/me/tokens'),
-  createToken:  (name)   => request('POST',   '/api/v1/me/tokens', { name }),
+  createToken:  (name, expiresAt = null) => request('POST', '/api/v1/me/tokens',
+    expiresAt ? { name, expires_at: expiresAt } : { name }),
   revokeToken:  (id)     => request('POST',   `/api/v1/me/tokens/${id}/revoke`),
   deleteToken:  (id)     => request('DELETE', `/api/v1/me/tokens/${id}`),
 

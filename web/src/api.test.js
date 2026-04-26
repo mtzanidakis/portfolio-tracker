@@ -185,6 +185,8 @@ describe('endpoint shapes', () => {
   it('self-service tokens', async () => {
     await call(() => api.listTokens());            assertCall('GET',    '/api/v1/me/tokens');
     await call(() => api.createToken('default'));  assertCall('POST',   '/api/v1/me/tokens', { name: 'default' });
+    await call(() => api.createToken('short', '2026-05-01T00:00:00Z'));
+    assertCall('POST', '/api/v1/me/tokens', { name: 'short', expires_at: '2026-05-01T00:00:00Z' });
     await call(() => api.revokeToken(42));         assertCall('POST',   '/api/v1/me/tokens/42/revoke', undefined);
     await call(() => api.deleteToken(42));         assertCall('DELETE', '/api/v1/me/tokens/42', undefined);
   });

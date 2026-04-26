@@ -16,10 +16,12 @@ type tokenListRow struct {
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 }
 
 type createTokenRequest struct {
-	Name string `json:"name"`
+	Name      string     `json:"name"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // createTokenResponse carries the plaintext token — exposed exactly once,
@@ -44,6 +46,7 @@ func listMyTokensHandler(d *db.DB) http.HandlerFunc {
 				CreatedAt:  t.CreatedAt,
 				LastUsedAt: t.LastUsedAt,
 				RevokedAt:  t.RevokedAt,
+				ExpiresAt:  t.ExpiresAt,
 			})
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -62,12 +65,19 @@ func createMyTokenHandler(d *db.DB) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "name is required")
 			return
 		}
+		if req.ExpiresAt != nil && !req.ExpiresAt.After(time.Now()) {
+			writeError(w, http.StatusBadRequest, "expires_at must be in the future")
+			return
+		}
 		plain, hash, err := auth.GenerateToken()
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "token error")
 			return
 		}
-		tok := &domain.Token{UserID: u.ID, Name: req.Name, Hash: hash}
+		tok := &domain.Token{
+			UserID: u.ID, Name: req.Name, Hash: hash,
+			ExpiresAt: req.ExpiresAt,
+		}
 		if err := d.CreateToken(r.Context(), tok); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -75,6 +85,7 @@ func createMyTokenHandler(d *db.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusCreated, createTokenResponse{
 			tokenListRow: tokenListRow{
 				ID: tok.ID, Name: tok.Name, CreatedAt: tok.CreatedAt,
+				ExpiresAt: tok.ExpiresAt,
 			},
 			Token: plain,
 		})

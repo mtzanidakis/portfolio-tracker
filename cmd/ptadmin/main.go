@@ -25,7 +25,7 @@ Commands:
   user list
   user delete    (--id ID | --email EMAIL)
 
-  token create   --user EMAIL --name NAME
+  token create   --user EMAIL --name NAME [--expires-in DURATION]
   token list     [--user EMAIL]
   token revoke   --id ID
   token delete   --id ID

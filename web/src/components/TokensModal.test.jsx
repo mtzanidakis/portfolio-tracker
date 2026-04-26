@@ -90,13 +90,32 @@ describe('TokensModal — create', () => {
     await user.type(screen.getByPlaceholderText(/Token name/i), 'ci-bot');
     await user.click(screen.getByRole('button', { name: /create token/i }));
 
-    await waitFor(() => expect(api.createToken).toHaveBeenCalledWith('ci-bot'));
+    await waitFor(() => expect(api.createToken).toHaveBeenCalledWith('ci-bot', null));
     // The reveal panel renders the secret verbatim — copied once, gone forever.
     await waitFor(() => expect(screen.getByText('pt_xyz_secret')).toBeInTheDocument());
     // listTokens is called again to refresh the table.
     await waitFor(() => expect(api.listTokens).toHaveBeenCalledTimes(2));
     // The name input was cleared.
     expect(screen.getByPlaceholderText(/Token name/i).value).toBe('');
+  });
+
+  it('passes the chosen expiry as ISO timestamp', async () => {
+    const user = userEvent.setup();
+    render(<TokensModal onClose={vi.fn()} />);
+    await waitFor(() => expect(api.listTokens).toHaveBeenCalledOnce());
+
+    await user.type(screen.getByPlaceholderText(/Token name/i), 'short-lived');
+    await user.selectOptions(screen.getByLabelText('Token expiry'), '7');
+    await user.click(screen.getByRole('button', { name: /create token/i }));
+
+    await waitFor(() => expect(api.createToken).toHaveBeenCalledOnce());
+    const [name, expiresAt] = api.createToken.mock.calls[0];
+    expect(name).toBe('short-lived');
+    // Just check that the timestamp parses and is roughly 7 days out.
+    const t = new Date(expiresAt).getTime();
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    expect(t).toBeGreaterThan(Date.now() + sevenDays - 60_000);
+    expect(t).toBeLessThan(Date.now() + sevenDays + 60_000);
   });
 
   it('"Done" dismisses the just-created panel', async () => {

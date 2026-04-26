@@ -77,6 +77,7 @@ type Transaction struct {
 // token is returned exactly once, at creation time. DeletedAt is the
 // soft-delete marker — soft-deleted rows are filtered out of every read
 // path, so they only ever appear here when fetched by id directly.
+// ExpiresAt is optional: nil = never expires.
 type Token struct {
 	ID         int64      `json:"id"`
 	UserID     int64      `json:"user_id"`
@@ -86,4 +87,5 @@ type Token struct {
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
 	DeletedAt  *time.Time `json:"deleted_at,omitempty"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 }

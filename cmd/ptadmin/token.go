@@ -33,6 +33,8 @@ func tokenCreate(ctx context.Context, conn *db.DB, args []string) int {
 	fs := flag.NewFlagSet("token create", flag.ContinueOnError)
 	userEmail := fs.String("user", "", "user email (required)")
 	name := fs.String("name", "", "token name (required)")
+	expiresIn := fs.Duration("expires-in", 0,
+		"optional expiry as a Go duration (e.g. 720h = 30d); 0 = never")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -52,12 +54,20 @@ func tokenCreate(ctx context.Context, conn *db.DB, args []string) int {
 		return errf("token create: %v", err)
 	}
 	tok := &domain.Token{UserID: u.ID, Name: *name, Hash: hash}
+	if *expiresIn > 0 {
+		t := time.Now().Add(*expiresIn)
+		tok.ExpiresAt = &t
+	}
 	if err := conn.CreateToken(ctx, tok); err != nil {
 		return errf("token create: %v", err)
 	}
 	fmt.Println("Token (store this, it will not be shown again):")
 	fmt.Println(plain)
-	fmt.Printf("\nid=%d user=%s name=%s\n", tok.ID, u.Email, tok.Name)
+	fmt.Printf("\nid=%d user=%s name=%s", tok.ID, u.Email, tok.Name)
+	if tok.ExpiresAt != nil {
+		fmt.Printf(" expires=%s", tok.ExpiresAt.Format("2006-01-02"))
+	}
+	fmt.Println()
 	return 0
 }
 
@@ -93,13 +103,14 @@ func tokenList(ctx context.Context, conn *db.DB, args []string) int {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "ID\tUSER\tNAME\tCREATED\tLAST USED\tREVOKED")
+	_, _ = fmt.Fprintln(w, "ID\tUSER\tNAME\tCREATED\tLAST USED\tREVOKED\tEXPIRES")
 	for _, t := range rows {
-		_, _ = fmt.Fprintf(w, "%d\t%d\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
 			t.ID, t.UserID, t.Name,
 			t.CreatedAt.Format("2006-01-02"),
 			fmtOptTime(t.LastUsedAt),
 			fmtOptTime(t.RevokedAt),
+			fmtOptTime(t.ExpiresAt),
 		)
 	}
 	_ = w.Flush()

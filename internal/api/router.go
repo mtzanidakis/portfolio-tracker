@@ -63,7 +63,11 @@ func NewRouter(d *db.DB, sessionLifetime time.Duration, opts ...Option) *http.Se
 		opt(cfg)
 	}
 
-	mw := &auth.Middleware{DB: d, SessionLifetime: sessionLifetime}
+	mw := &auth.Middleware{
+		DB:              d,
+		SessionLifetime: sessionLifetime,
+		LastUsed:        auth.NewLastUsedThrottler(time.Minute),
+	}
 	mux := http.NewServeMux()
 
 	// Public

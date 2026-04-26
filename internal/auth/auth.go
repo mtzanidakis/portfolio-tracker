@@ -76,6 +76,27 @@ func UserFrom(ctx context.Context) *domain.User {
 type Middleware struct {
 	DB              *db.DB
 	SessionLifetime time.Duration
+	// LastUsed throttles per-token last_used_at writes so a busy CLI
+	// doesn't hammer the database. nil = update on every request
+	// (legacy behaviour, fine for tests).
+	LastUsed *LastUsedThrottler
+}
+
+// touchToken updates last_used_at for the given token id, throttled if
+// the middleware has a LastUsedThrottler configured. Throttled writes
+// run in a goroutine — the request shouldn't wait on a non-essential
+// audit field.
+func (m *Middleware) touchToken(ctx context.Context, id int64) {
+	if m.LastUsed == nil {
+		_ = m.DB.TouchToken(ctx, id)
+		return
+	}
+	if !m.LastUsed.Allow(id, time.Now()) {
+		return
+	}
+	// Detach from the request context so a quick client disconnect
+	// doesn't cancel the write mid-flight.
+	go func() { _ = m.DB.TouchToken(context.Background(), id) }() //nolint:gosec // intentional fire-and-forget audit write
 }
 
 // Handler wraps next with auth enforcement.
@@ -97,7 +118,7 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 				http.Error(w, "auth error", http.StatusInternalServerError)
 				return
 			}
-			_ = m.DB.TouchToken(r.Context(), tok.ID)
+			m.touchToken(r.Context(), tok.ID)
 			next.ServeHTTP(w, r.WithContext(WithUser(r.Context(), u)))
 			return
 		}

@@ -3,6 +3,7 @@ package db
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
 )
@@ -107,6 +108,51 @@ func TestSoftDeleteToken_HidesFromReads(t *testing.T) {
 	// Re-deleting signals "already gone" with ErrNotFound.
 	if err := db.SoftDeleteToken(ctx, tok.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("re-delete: got %v", err)
+	}
+}
+
+func TestTokenExpiry_FiltersBearerLookup(t *testing.T) {
+	db := newTestDB(t)
+	ctx := t.Context()
+	u := mustCreateUser(t, db, "exp@test.io")
+
+	past := time.Now().Add(-time.Minute)
+	future := time.Now().Add(time.Hour)
+
+	expired := &domain.Token{UserID: u.ID, Name: "old", Hash: "h-expired", ExpiresAt: &past}
+	if err := db.CreateToken(ctx, expired); err != nil {
+		t.Fatalf("create expired: %v", err)
+	}
+	live := &domain.Token{UserID: u.ID, Name: "live", Hash: "h-live", ExpiresAt: &future}
+	if err := db.CreateToken(ctx, live); err != nil {
+		t.Fatalf("create live: %v", err)
+	}
+	never := &domain.Token{UserID: u.ID, Name: "forever", Hash: "h-forever"}
+	if err := db.CreateToken(ctx, never); err != nil {
+		t.Fatalf("create never: %v", err)
+	}
+
+	// Auth path rejects the expired hash but accepts the others.
+	if _, err := db.GetTokenByHash(ctx, "h-expired"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expired hash should be ErrNotFound, got %v", err)
+	}
+	got, err := db.GetTokenByHash(ctx, "h-live")
+	if err != nil || got == nil || got.ExpiresAt == nil {
+		t.Errorf("live: err=%v tok=%+v", err, got)
+	}
+	got, err = db.GetTokenByHash(ctx, "h-forever")
+	if err != nil || got == nil || got.ExpiresAt != nil {
+		t.Errorf("never: err=%v tok=%+v", err, got)
+	}
+
+	// Management list still returns all three so the UI can render
+	// "Expired" status alongside the others.
+	all, err := db.ListTokens(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(all) != 3 {
+		t.Errorf("ListTokens: got %d, want 3", len(all))
 	}
 }
 

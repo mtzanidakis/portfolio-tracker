@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
 )
@@ -13,8 +14,8 @@ import (
 // hash; the plaintext token is never stored.
 func (db *DB) CreateToken(ctx context.Context, tok *domain.Token) error {
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO tokens(user_id, name, hash) VALUES (?, ?, ?)`,
-		tok.UserID, tok.Name, tok.Hash,
+		`INSERT INTO tokens(user_id, name, hash, expires_at) VALUES (?, ?, ?, ?)`,
+		tok.UserID, tok.Name, tok.Hash, nullableTime(tok.ExpiresAt),
 	)
 	if err != nil {
 		return fmt.Errorf("insert token: %w", err)
@@ -29,29 +30,34 @@ func (db *DB) CreateToken(ctx context.Context, tok *domain.Token) error {
 	).Scan(&tok.CreatedAt)
 }
 
-// GetTokenByHash returns the (live, non-revoked) token matching the
-// given hash, or ErrNotFound. Soft-deleted and revoked rows are
-// excluded so auth never resurrects a credential the user has retired.
+// GetTokenByHash returns the (live, non-revoked, non-expired) token
+// matching the given hash, or ErrNotFound. Soft-deleted, revoked, and
+// expired rows are excluded so auth never resurrects a credential the
+// user has retired or that has aged out.
 func (db *DB) GetTokenByHash(ctx context.Context, hash string) (*domain.Token, error) {
 	return db.scanToken(ctx,
-		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at, deleted_at
+		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at, deleted_at, expires_at
 		   FROM tokens
-		   WHERE hash = ? AND revoked_at IS NULL AND deleted_at IS NULL`, hash)
+		   WHERE hash = ?
+		     AND revoked_at IS NULL
+		     AND deleted_at IS NULL
+		     AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`, hash)
 }
 
 // GetToken returns a token by id regardless of revocation, but still
 // excludes soft-deleted rows.
 func (db *DB) GetToken(ctx context.Context, id int64) (*domain.Token, error) {
 	return db.scanToken(ctx,
-		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at, deleted_at
+		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at, deleted_at, expires_at
 		   FROM tokens WHERE id = ? AND deleted_at IS NULL`, id)
 }
 
-// ListTokens returns all live tokens for a user (including revoked,
-// excluding soft-deleted).
+// ListTokens returns all live tokens for a user (including revoked and
+// expired so the management UI can show their state, excluding only
+// soft-deleted).
 func (db *DB) ListTokens(ctx context.Context, userID int64) ([]*domain.Token, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at, deleted_at
+		`SELECT id, user_id, name, hash, created_at, last_used_at, revoked_at, deleted_at, expires_at
 		   FROM tokens
 		   WHERE user_id = ? AND deleted_at IS NULL
 		   ORDER BY id`, userID)
@@ -125,9 +131,10 @@ func scanTokenRow(r rowScanner) (*domain.Token, error) {
 		lastUsed  sql.NullTime
 		revokedAt sql.NullTime
 		deletedAt sql.NullTime
+		expiresAt sql.NullTime
 	)
 	if err := r.Scan(&tok.ID, &tok.UserID, &tok.Name, &tok.Hash, &tok.CreatedAt,
-		&lastUsed, &revokedAt, &deletedAt); err != nil {
+		&lastUsed, &revokedAt, &deletedAt, &expiresAt); err != nil {
 		return nil, fmt.Errorf("scan token: %w", err)
 	}
 	if lastUsed.Valid {
@@ -141,6 +148,10 @@ func scanTokenRow(r rowScanner) (*domain.Token, error) {
 	if deletedAt.Valid {
 		t := deletedAt.Time
 		tok.DeletedAt = &t
+	}
+	if expiresAt.Valid {
+		t := expiresAt.Time
+		tok.ExpiresAt = &t
 	}
 	return &tok, nil
 }
@@ -159,4 +170,13 @@ func (db *DB) scanToken(ctx context.Context, query string, arg any) (*domain.Tok
 		return nil, err
 	}
 	return tok, nil
+}
+
+// nullableTime converts a *time.Time to a sql parameter that round-trips
+// to NULL when the pointer is nil.
+func nullableTime(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return *t
 }
