@@ -140,7 +140,7 @@ export function AccountsPage({ privacy, onOpenActivity }) {
   return (
     <>
       <div class="acc-grid">
-        {accounts.map(a => {
+        {[...accounts].sort((a, b) => a.name.localeCompare(b.name)).map(a => {
           const {
             count, openCost, openValue, unrealized, valueStale, hasOpen,
             realized, cashBalance, hasTrade, hasCash,

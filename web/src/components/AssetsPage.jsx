@@ -23,11 +23,19 @@ export function AssetsPage({ privacy, onOpenActivity }) {
   if (err) return <div class="empty">Error: {err}</div>;
 
   const q = query.toLowerCase();
-  const filtered = assets.filter(a =>
-    q === '' ||
-    a.symbol.toLowerCase().includes(q) ||
-    (a.name || '').toLowerCase().includes(q)
-  );
+  const filtered = assets
+    .filter(a =>
+      q === '' ||
+      a.symbol.toLowerCase().includes(q) ||
+      (a.name || '').toLowerCase().includes(q)
+    )
+    .sort((a, b) => {
+      // Cash rows render `currency` in the symbol column (their real
+      // symbol is the synthetic `CASH-<CUR>`), so sort by what the user sees.
+      const ka = a.type === 'cash' ? a.currency : a.symbol;
+      const kb = b.type === 'cash' ? b.currency : b.symbol;
+      return ka.localeCompare(kb);
+    });
 
   const handleDelete = async (asset) => {
     if (!confirm(`Delete "${asset.symbol}"? All transactions for this asset will be removed as well.`)) return;
