@@ -8,6 +8,7 @@ const KNOWN = [
   'chart', 'pie', 'activity', 'wallet', 'coins', 'trash', 'edit',
   'plus', 'moon', 'sun', 'eye', 'eyeOff', 'search',
   'arrowUp', 'arrowDown', 'close', 'more', 'check', 'menu', 'swap',
+  'ban',
 ];
 
 describe('Icon', () => {

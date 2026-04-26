@@ -188,10 +188,12 @@ export function TokensModal({ onClose }) {
                     <td>
                       <span style={{ color: status.color, fontSize: 12 }}>{status.label}</span>
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td data-actions style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {canRevoke && (
-                        <button class="btn" onClick={() => revoke(t.id)}
-                          style={{ fontSize: 12, padding: '4px 10px', marginRight: 6 }}>Revoke</button>
+                        <button class="icon-btn" title="Revoke" aria-label="Revoke"
+                          onClick={() => revoke(t.id)}>
+                          <Icon name="ban" />
+                        </button>
                       )}
                       <button class="icon-btn" title="Delete" aria-label="Delete"
                         onClick={() => remove(t.id)}>
