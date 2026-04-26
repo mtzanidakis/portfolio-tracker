@@ -38,11 +38,18 @@ ptagent holdings                        # positions with value + PnL in base
 ptagent performance --tf 1M             # total + PnL for a timeframe
 ptagent allocations --group type        # stocks vs crypto vs cash, etc.
 ptagent accounts                        # list accounts
-ptagent assets --q apple                # search the asset catalog
+ptagent assets --q apple                # search the local asset catalog
+ptagent asset-lookup --symbol AAPL      # resolve via Yahoo (or --provider coingecko)
+ptagent asset-price --symbol AAPL       # latest known price for one symbol
 ptagent transactions --side buy --limit 20
+ptagent tx-summary                      # totals: counts, buys, sells, deposits…
+ptagent fx-rate --from USD --to EUR     # latest rate; add --at YYYY-MM-DD for historical
+ptagent refresh-prices                  # force a server-side price + FX refresh
+ptagent export --format json --out backup.json
+ptagent export --format csv --out txs.csv
 ```
 
-Add `--json` for raw JSON output (good for further processing).
+Add `--json` for raw JSON output (good for further processing). Note that `refresh-prices` posts to the server but does not mutate user data — it only refreshes the global price cache, so it is safe to run without `--yes`.
 
 ## Write commands (REQUIRE `--yes`)
 
@@ -58,15 +65,24 @@ ptagent add-account --name "Broker" --type Brokerage --short BR \
 ptagent add-asset --symbol AAPL --name "Apple Inc." --type stock \
   --currency USD --provider yahoo --provider-id AAPL --yes
 
+ptagent update-tx --id 42 --price 199.10 --note "fix typo" --yes
+ptagent update-account --id 3 --name "Broker EU" --color "#3a7" --yes
+
 ptagent delete-tx --id 42 --yes
 ptagent delete-account --id 3 --yes
+ptagent delete-asset --symbol OLDX --yes
 ptagent set-base-currency --currency EUR --yes
 ```
 
+`update-tx` and `update-account` are partial: only the flags you pass are
+sent to the server; everything else is left untouched. To clear a note,
+pass `--note ""` explicitly.
+
 ## Tips for the coding agent
 
-- Before `add-tx`: verify the asset exists (`ptagent assets --q <sym>`); if not, add it first. Transactions FK-reference the asset.
+- Before `add-tx`: verify the asset exists (`ptagent assets --q <sym>`); if not, look it up with `ptagent asset-lookup --symbol <sym>` to grab the canonical name / native currency / provider-id, then `add-asset`. Transactions FK-reference the asset.
 - Before `add-tx`: get the account id via `ptagent accounts`.
 - Use `ptagent me` to confirm base currency and interpret monetary values.
-- Multi-currency: the asset's native currency may differ from the user's base. `add-tx --fx` is the FX rate from the asset's currency to the user's base at the trade time; it is locked per transaction so historical cost basis doesn't drift.
+- Multi-currency: the asset's native currency may differ from the user's base. `add-tx --fx` is the FX rate from the asset's currency to the user's base at the trade time; it is locked per transaction so historical cost basis doesn't drift. Use `ptagent fx-rate --from <native> --to <base> --at <date>` to fetch the right rate before `add-tx`.
+- To fix a mistaken transaction, prefer `update-tx` over `delete-tx` + `add-tx` so the original id and creation timestamp survive.
 - On errors: the CLI prints "ptagent: <reason>". Common ones: `401` (bad token), `400` (validation — fix the flags), `404` (wrong id).

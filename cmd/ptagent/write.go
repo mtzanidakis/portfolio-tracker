@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/url"
 	"time"
 )
 
@@ -145,6 +146,137 @@ func cmdDeleteAccount(cfg *config, args []string) int {
 		return errf("%v", err)
 	}
 	fmt.Printf("deleted account id=%d\n", *id)
+	return 0
+}
+
+func cmdUpdateTx(cfg *config, args []string) int {
+	fs := flag.NewFlagSet("update-tx", flag.ContinueOnError)
+	var (
+		id      int64
+		account int64
+		qty     float64
+		price   float64
+		fee     float64
+		fx      float64
+	)
+	fs.Int64Var(&id, "id", 0, "transaction id (required)")
+	fs.Int64Var(&account, "account-id", 0, "account id")
+	fs.Float64Var(&qty, "qty", 0, "quantity")
+	fs.Float64Var(&price, "price", 0, "per-unit price")
+	fs.Float64Var(&fee, "fee", 0, "fee in asset currency")
+	fs.Float64Var(&fx, "fx", 0, "fx rate asset→base")
+	symbol := fs.String("symbol", "", "asset symbol")
+	side := fs.String("side", "", "buy|sell|deposit|withdraw|interest")
+	date := fs.String("date", "", "YYYY-MM-DD")
+	note := fs.String("note", "", `free-text note (use --note "" to clear)`)
+	if !requireYes(fs, args) {
+		return 2
+	}
+	if id == 0 {
+		return errf("--id is required")
+	}
+	// Only forward flags the caller actually set, so omitted fields are
+	// left untouched server-side (the PATCH handler treats zero values
+	// as "no change" — except for note, which is always overwritten).
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	body := map[string]any{}
+	if set["account-id"] {
+		body["account_id"] = account
+	}
+	if set["symbol"] {
+		body["asset_symbol"] = *symbol
+	}
+	if set["side"] {
+		body["side"] = *side
+	}
+	if set["qty"] {
+		body["qty"] = qty
+	}
+	if set["price"] {
+		body["price"] = price
+	}
+	if set["fee"] {
+		body["fee"] = fee
+	}
+	if set["fx"] {
+		body["fx_to_base"] = fx
+	}
+	if set["date"] {
+		body["occurred_at"] = *date + "T12:00:00Z"
+	}
+	if set["note"] {
+		body["note"] = *note
+	}
+	if len(body) == 0 {
+		return errf("nothing to update — pass at least one field flag")
+	}
+	var out map[string]any
+	if err := apiPATCH(cfg, fmt.Sprintf("/api/v1/transactions/%d", id), body, &out); err != nil {
+		return errf("%v", err)
+	}
+	fmt.Printf("updated tx id=%v %v %v %v @ %v\n",
+		out["id"], out["side"], out["qty"], out["asset_symbol"], out["price"])
+	return 0
+}
+
+func cmdUpdateAccount(cfg *config, args []string) int {
+	fs := flag.NewFlagSet("update-account", flag.ContinueOnError)
+	var id int64
+	fs.Int64Var(&id, "id", 0, "account id (required)")
+	name := fs.String("name", "", "display name")
+	typ := fs.String("type", "", "free-text type label")
+	short := fs.String("short", "", "2-3 char label")
+	color := fs.String("color", "", "hex color")
+	currency := fs.String("currency", "", "USD|EUR|...")
+	if !requireYes(fs, args) {
+		return 2
+	}
+	if id == 0 {
+		return errf("--id is required")
+	}
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	body := map[string]any{}
+	if set["name"] {
+		body["name"] = *name
+	}
+	if set["type"] {
+		body["type"] = *typ
+	}
+	if set["short"] {
+		body["short"] = *short
+	}
+	if set["color"] {
+		body["color"] = *color
+	}
+	if set["currency"] {
+		body["currency"] = *currency
+	}
+	if len(body) == 0 {
+		return errf("nothing to update — pass at least one field flag")
+	}
+	var out map[string]any
+	if err := apiPATCH(cfg, fmt.Sprintf("/api/v1/accounts/%d", id), body, &out); err != nil {
+		return errf("%v", err)
+	}
+	fmt.Printf("updated account id=%v %v\n", out["id"], out["name"])
+	return 0
+}
+
+func cmdDeleteAsset(cfg *config, args []string) int {
+	fs := flag.NewFlagSet("delete-asset", flag.ContinueOnError)
+	symbol := fs.String("symbol", "", "asset symbol (required)")
+	if !requireYes(fs, args) {
+		return 2
+	}
+	if *symbol == "" {
+		return errf("--symbol is required")
+	}
+	if err := apiDELETE(cfg, "/api/v1/assets/"+url.PathEscape(*symbol)); err != nil {
+		return errf("%v", err)
+	}
+	fmt.Printf("deleted asset %v\n", *symbol)
 	return 0
 }
 

@@ -88,6 +88,28 @@ func apiDo(cfg *config, method, path string, body, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// apiGETStream issues a raw GET and returns the response body so the
+// caller can stream binary or already-encoded content (e.g., the
+// /export endpoint). The caller MUST close the returned body.
+func apiGETStream(cfg *config, path string) (io.ReadCloser, error) {
+	client := &http.Client{Timeout: 5 * time.Minute}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, cfg.APIURL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.Token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET %s: %w", path, err)
+	}
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("GET %s: %s: %s", path, resp.Status, b)
+	}
+	return resp.Body, nil
+}
+
 // printJSON writes v as pretty JSON to stdout.
 func printJSON(v any) {
 	enc := json.NewEncoder(os.Stdout)

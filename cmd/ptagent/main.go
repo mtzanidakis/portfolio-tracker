@@ -23,11 +23,17 @@ Usage:
 Read commands:
   me
   holdings
-  performance   [--tf 1D|1W|1M|3M|6M|1Y|ALL]
-  allocations   [--group asset|type|account]
+  performance     [--tf 1D|1W|1M|3M|6M|1Y|ALL]
+  allocations     [--group asset|type|account]
   accounts
-  assets        [--q SEARCH]
-  transactions  [--symbol SYM] [--side buy|sell] [--limit N]
+  assets          [--q SEARCH]
+  asset-lookup    --symbol SYM [--provider yahoo|coingecko]
+  asset-price     --symbol SYM
+  transactions    [--symbol SYM] [--side buy|sell] [--limit N]
+  tx-summary
+  fx-rate         --from CCY --to CCY [--at YYYY-MM-DD]
+  refresh-prices
+  export          [--format json|csv] [--out FILE]
 
 Write commands (require --yes):
   add-tx --account-id ID --symbol SYM --side buy|sell --qty N --price N
@@ -36,8 +42,13 @@ Write commands (require --yes):
               --currency USD|EUR|... --yes
   add-asset --symbol SYM --name NAME --type stock|etf|crypto|cash
             --currency USD|EUR|... [--provider P] [--provider-id ID] --yes
+  update-tx --id ID [--account-id ID] [--symbol SYM] [--side ...] [--qty N]
+            [--price N] [--fee N] [--fx N] [--date YYYY-MM-DD] [--note TXT] --yes
+  update-account --id ID [--name NAME] [--type TYPE] [--short XX]
+                 [--color #RRGGBB] [--currency USD|EUR|...] --yes
   delete-tx --id ID --yes
   delete-account --id ID --yes
+  delete-asset --symbol SYM --yes
   set-base-currency --currency USD|EUR|... --yes
 
 Global flags:
@@ -88,6 +99,18 @@ func run() int {
 		return cmdAssets(cfg, args)
 	case "transactions":
 		return cmdTransactions(cfg, args)
+	case "tx-summary":
+		return cmdTxSummary(cfg, args)
+	case "asset-lookup":
+		return cmdAssetLookup(cfg, args)
+	case "asset-price":
+		return cmdAssetPrice(cfg, args)
+	case "fx-rate":
+		return cmdFxRate(cfg, args)
+	case "refresh-prices":
+		return cmdRefreshPrices(cfg, args)
+	case "export":
+		return cmdExport(cfg, args)
 
 	case "add-tx":
 		return cmdAddTx(cfg, args)
@@ -95,10 +118,16 @@ func run() int {
 		return cmdAddAccount(cfg, args)
 	case "add-asset":
 		return cmdAddAsset(cfg, args)
+	case "update-tx":
+		return cmdUpdateTx(cfg, args)
+	case "update-account":
+		return cmdUpdateAccount(cfg, args)
 	case "delete-tx":
 		return cmdDeleteTx(cfg, args)
 	case "delete-account":
 		return cmdDeleteAccount(cfg, args)
+	case "delete-asset":
+		return cmdDeleteAsset(cfg, args)
 	case "set-base-currency":
 		return cmdSetBaseCurrency(cfg, args)
 
