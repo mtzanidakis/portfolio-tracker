@@ -23,7 +23,13 @@ import (
 	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
 )
 
-const tokenEntropyBytes = 32
+const (
+	tokenEntropyBytes = 32
+	// TokenPrefix tags Bearer tokens so they're recognisable in logs,
+	// secret scanners, and clipboards. The hash is over the full
+	// prefixed string, so old un-prefixed tokens stop validating.
+	TokenPrefix = "pt_"
+)
 
 // GenerateToken returns a new (plaintext, hash) pair for an API token.
 // The plaintext must be returned to the user exactly once; the hash is
@@ -33,7 +39,7 @@ func GenerateToken() (plaintext, hash string, err error) {
 	if _, err := rand.Read(b); err != nil {
 		return "", "", err
 	}
-	plaintext = base64.RawURLEncoding.EncodeToString(b)
+	plaintext = TokenPrefix + base64.RawURLEncoding.EncodeToString(b)
 	hash = HashToken(plaintext)
 	return plaintext, hash, nil
 }

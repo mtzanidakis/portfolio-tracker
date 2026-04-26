@@ -291,7 +291,7 @@ func TestMeTokens_SelfServiceCRUD(t *testing.T) {
 	if created.Token == "" {
 		t.Error("plaintext token missing from create response")
 	}
-	if !strings.Contains(created.Token, "") || len(created.Token) < 40 {
+	if !strings.HasPrefix(created.Token, auth.TokenPrefix) || len(created.Token) < 40 {
 		t.Errorf("token looks wrong: %q", created.Token)
 	}
 
