@@ -8,7 +8,7 @@
 - Allocation breakdowns by asset class, account, and currency.
 - Auto-refreshed prices (Yahoo Finance, CoinGecko) and FX (ECB) — no manual entry once a transaction is logged.
 - Import from Ghostfolio JSON via a guided wizard (per-account / per-asset review before applying); export full-snapshot JSON or transactions CSV.
-- Multi-user with browser session auth and API tokens for `ptagent` / automation, self-serviced from the UI.
+- Multi-user with browser session auth (HMAC-signed session cookies) and `pt_…` API tokens for `ptagent` / automation — optional expiry, soft-delete on revoke, self-serviced from the UI.
 - Self-hosted, PWA-installable on Android, with three aesthetics (technical / editorial / forest), dark + light themes, a privacy mask, and a customisable date format.
 
 ## Quick start (local development)
@@ -21,32 +21,102 @@ below.
 # 1. Symlink the dev compose overlay
 ln -sf compose.override.yaml-dev compose.override.yaml
 
-# 2. Build + start
+# 2. Set the cookie-signing secret (required, ≥ 32 bytes).
+#    Persist it in .env so the container picks it up:
+echo "PT_SESSION_SECRET=$(openssl rand -base64 32)" >> .env
+
+# 3. Build + start
 make build
 make run
 
-# 3. Create a user (prompts twice for a password ≥ 8 chars)
+# 4. Create a user (prompts twice for a password ≥ 8 chars)
 make admin ARGS="user add --email you@example.com --name You --base-currency EUR"
 
-# 4. Open the app and sign in with that email + password
+# 5. Open the app and sign in with that email + password
 xdg-open http://localhost:8082
 ```
 
 Inside the app, the avatar menu (bottom-left of the sidebar) lets you
 edit profile, open Settings (base currency, aesthetic, date format),
-and create/revoke API tokens for `ptagent` and other automation.
+and manage API tokens for `ptagent` and other automation.
 
 The sidebar's **Import / Export** entry runs the import wizard
 (currently Ghostfolio JSON; pluggable for future sources) and serves
 backups: full-snapshot JSON or transactions-only CSV.
 
-### API-only setup (no browser access)
+## API tokens
+
+Tokens authenticate `ptagent` and any other Bearer-using client. They
+start with `pt_`, carry 32 random bytes, and are stored as SHA-256
+hashes — the raw token is shown exactly once at creation time. Each row
+supports an optional expiry (`Never` / 7d / 30d / 90d / 1y from the UI,
+or `--expires-in` from `ptadmin`) and `last_used_at` is updated
+asynchronously, at most once per minute per token, so a busy CLI
+doesn't generate one DB write per call.
+
+| Action | What it does |
+|--------|---------------|
+| **Revoke** | The credential stops authenticating immediately; the row stays in the list with status `Revoked` for audit. |
+| **Delete** (trash icon) | Soft-delete: the row disappears from the list but is retained in the DB for forensics. |
+
+Manage them from **avatar menu → API tokens** in the UI, or from the
+admin CLI:
 
 ```bash
-make admin ARGS="user add --email bot@example.com --name Bot --no-password"
-make admin ARGS="token create --user bot@example.com --name default"
-# ↑ token is printed exactly once.
+# Create (in the running container)
+make admin ARGS="token create --user you@example.com --name laptop-cli"
+# Optional expiry: any Go duration; e.g. 30 days
+make admin ARGS="token create --user you@example.com --name ci --expires-in 720h"
+
+# List, revoke, delete
+make admin ARGS="token list --user you@example.com"
+make admin ARGS="token revoke --id 3"
+make admin ARGS="token delete --id 3"
 ```
+
+### `ptagent` setup
+
+`ptagent` is the standalone API client. Pre-built binaries for
+linux / macOS / Windows × amd64 / arm64 ship with every GitHub release;
+or build it locally with `make ptagent-build` (puts a binary in `bin/`).
+
+1. **Get a token** from the UI (recommended) or `ptadmin`:
+
+   ```bash
+   make admin ARGS="user add --email bot@example.com --name Bot --no-password"
+   make admin ARGS="token create --user bot@example.com --name default"
+   # → pt_<43 chars>   (shown once — copy it now)
+   ```
+
+2. **Export the env vars** the agent reads:
+
+   ```bash
+   export PT_API_URL="https://portfolio.your-tailnet.ts.net"  # or http://localhost:8082 in dev
+   export PT_TOKEN="pt_…"
+   ```
+
+   Drop them in `~/.zshrc` / `~/.bashrc` if you want them persistent.
+
+3. **Try a call:**
+
+   ```bash
+   ptagent me
+   ptagent holdings
+   ptagent assets
+   ptagent add-tx --account-id 1 --symbol AAPL --side buy \
+     --qty 10 --price 192.50 --date 2026-04-01 --yes
+   ```
+
+   `ptagent help` lists every command. Mutating commands require
+   `--yes` as a destructive-action gate.
+
+### Claude Code skill
+
+`skill/SKILL.md` ships in every release archive. Drop it at
+`~/.claude/skills/ptagent/SKILL.md` and Claude Code will invoke
+`ptagent` on its own when you ask in plain language to log a trade,
+look up a holding, or check performance — provided `PT_API_URL` /
+`PT_TOKEN` are exported in the shell that runs Claude Code.
 
 ## Production deployment
 
@@ -61,16 +131,20 @@ reachable only through your Tailscale network — no public ports.
    ln -sf compose.override.yaml-prod compose.override.yaml
    ```
 
-2. Add the Tailscale variables to `.env`:
+2. Set required variables in `.env`:
 
    ```
    HOSTNAME=portfolio
    TS_AUTHKEY=tskey-auth-...
+   PT_SESSION_SECRET=<output of `openssl rand -base64 32`>
    ```
 
    `HOSTNAME` is the Tailscale machine name the app will register as.
    Generate `TS_AUTHKEY` at
    <https://login.tailscale.com/admin/settings/keys>.
+   `PT_SESSION_SECRET` is the HMAC key for browser session cookies — keep
+   it stable across restarts (rotating it invalidates every active
+   session).
 
 3. Pull and start:
 
@@ -92,15 +166,17 @@ docker compose up -d
 
 ## Auth model
 
-| Client    | Credentials                               | Auth mechanism                   |
-|-----------|-------------------------------------------|----------------------------------|
-| Browser   | email + password → session                | `pt_session` cookie + CSRF       |
-| `ptagent` | API token from UI or `ptadmin`            | `Authorization: Bearer <token>`  |
-| Admin ops | none — direct DB via `ptadmin`            | —                                |
+| Client    | Credentials                               | Auth mechanism                              |
+|-----------|-------------------------------------------|---------------------------------------------|
+| Browser   | email + password → session                | HMAC-signed `pt_session` cookie + CSRF      |
+| `ptagent` | API token from UI or `ptadmin`            | `Authorization: Bearer pt_<32 random bytes>`|
+| Admin ops | none — direct DB via `ptadmin`            | —                                           |
 
 Both auth paths coexist on the same API routes; the server accepts
 whichever is present. Browser unsafe methods additionally require an
-`X-CSRF-Token` header matching the `pt_csrf` cookie.
+`X-CSRF-Token` header matching the `pt_csrf` cookie. The session cookie
+is HMAC-SHA256 signed with `PT_SESSION_SECRET`; tampered or unsigned
+cookies are rejected before any DB lookup.
 
 ## Configuration
 
@@ -110,6 +186,7 @@ Server env vars (CLI flags override when both are set):
 |----------------------------|----------------------|---------------------------------------------------|
 | `PT_ADDR`                  | `:8082`              | HTTP listen address                               |
 | `PT_DB`                    | `./data/pt.db`       | SQLite database path                              |
+| `PT_SESSION_SECRET`        | **required**         | HMAC key for signing browser session cookies (≥ 32 bytes). Generate with `openssl rand -base64 32`. Rotating it logs everyone out. |
 | `PT_PRICE_REFRESH_INTERVAL`| `15m`                | live-quote refresh cadence (Go duration). The daily history backfill runs once at boot and again every 24h at 22:00 UTC. |
 | `PT_SESSION_LIFETIME`      | `30d`                | browser session lifetime (accepts `30d` or `720h`)|
 | `PT_COINGECKO_API_KEY`     | *(unset)*            | optional Demo tier key for dedicated quota        |
