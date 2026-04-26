@@ -54,6 +54,17 @@ func run() int {
 		return 2
 	}
 
+	// Cookie-signing secret. Required: a server with no secret would
+	// silently accept any value as a valid signature, which would make
+	// session cookies trivially forgeable.
+	secret := []byte(os.Getenv("PT_SESSION_SECRET"))
+	if len(secret) < 32 {
+		fmt.Fprintln(os.Stderr,
+			"ptd: PT_SESSION_SECRET is required and must be at least 32 bytes "+
+				"(generate one with: openssl rand -base64 32)")
+		return 2
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	logger.Info("portfolio-tracker starting",
 		"version", version.Version, "addr", *addr, "db", *dbPath,
@@ -90,7 +101,7 @@ func run() int {
 	if l, ok := svc.CoinGecko.(prices.SymbolLookup); ok {
 		cgLookup = l
 	}
-	mux := api.NewRouter(conn, lifetime,
+	mux := api.NewRouter(conn, lifetime, secret,
 		api.WithPriceRefresher(svc),
 		api.WithAssetLookups(yahooLookup, cgLookup),
 	)

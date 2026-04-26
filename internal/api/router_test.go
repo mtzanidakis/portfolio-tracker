@@ -17,6 +17,10 @@ import (
 	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
 )
 
+// testSecret is the cookie-signing key used across api tests. Random,
+// stable for the test run so request fixtures can be replayed.
+var testSecret = []byte("api-test-secret-32-bytes-padding!")
+
 // testEnv bundles a started test server with a user + active token.
 type testEnv struct {
 	t     *testing.T
@@ -51,7 +55,7 @@ func setup(t *testing.T) *testEnv {
 		t.Fatalf("create token: %v", err)
 	}
 
-	srv := httptest.NewServer(NewRouter(d, time.Hour))
+	srv := httptest.NewServer(NewRouter(d, time.Hour, testSecret))
 	t.Cleanup(srv.Close)
 	return &testEnv{t: t, db: d, srv: srv, user: u, token: plain}
 }

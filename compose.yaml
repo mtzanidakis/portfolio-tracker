@@ -8,6 +8,7 @@ services:
       - PT_DB=/data/pt.db
       - PT_PRICE_REFRESH_INTERVAL=15m
       - PT_SESSION_LIFETIME=30d
+      - PT_SESSION_SECRET=${PT_SESSION_SECRET}
       - PT_COINGECKO_API_KEY=${PT_COINGECKO_API_KEY:-}
       - TZ=${TZ:-Europe/Athens}
     volumes:

@@ -30,13 +30,15 @@ func randomBase64URL(n int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// SetAuthCookies sets the session (HttpOnly) and CSRF (JS-readable)
-// cookies on w. The Secure flag is auto-detected from the request.
-func SetAuthCookies(w http.ResponseWriter, r *http.Request, sessionID, csrf string, expires time.Time) {
+// SetAuthCookies sets the session (HttpOnly, HMAC-signed with secret)
+// and CSRF (JS-readable, unsigned — only its presence matters for the
+// double-submit check) cookies on w. The Secure flag is auto-detected
+// from the request.
+func SetAuthCookies(w http.ResponseWriter, r *http.Request, secret []byte, sessionID, csrf string, expires time.Time) {
 	secure := isSecureRequest(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
-		Value:    sessionID,
+		Value:    SignCookie(secret, sessionID),
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,

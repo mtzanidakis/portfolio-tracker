@@ -25,7 +25,7 @@ type loginRequest struct {
 // and sets the pt_session + pt_csrf cookies. Any failure (no such user,
 // empty password_hash, wrong password) yields the same generic error to
 // avoid leaking user existence.
-func loginHandler(d *db.DB, lifetime time.Duration) http.HandlerFunc {
+func loginHandler(d *db.DB, lifetime time.Duration, secret []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req loginRequest
 		if err := decodeJSON(r, &req); err != nil {
@@ -65,7 +65,7 @@ func loginHandler(d *db.DB, lifetime time.Duration) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "session error")
 			return
 		}
-		auth.SetAuthCookies(w, r, sid, csrf, expires)
+		auth.SetAuthCookies(w, r, secret, sid, csrf, expires)
 		writeJSON(w, http.StatusOK, u)
 	}
 }

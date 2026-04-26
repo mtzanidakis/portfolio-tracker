@@ -11,6 +11,8 @@ import (
 	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
 )
 
+var authTestSecret = []byte("auth-test-secret")
+
 func newDB(t *testing.T) *db.DB {
 	t.Helper()
 	d, err := db.Open(t.Context(), filepath.Join(t.TempDir(), "auth.db"))
@@ -115,7 +117,7 @@ func TestMiddleware_Bearer_Valid(t *testing.T) {
 		seenUser = UserFrom(r.Context())
 		w.WriteHeader(http.StatusNoContent)
 	})
-	mw := &Middleware{DB: d}
+	mw := &Middleware{DB: d, Secret: authTestSecret}
 	srv := httptest.NewServer(mw.Handler(next))
 	defer srv.Close()
 
@@ -131,7 +133,7 @@ func TestMiddleware_Bearer_Valid(t *testing.T) {
 
 func TestMiddleware_Bearer_Invalid(t *testing.T) {
 	d := newDB(t)
-	mw := &Middleware{DB: d}
+	mw := &Middleware{DB: d, Secret: authTestSecret}
 	srv := httptest.NewServer(mw.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
 	defer srv.Close()
 
@@ -144,7 +146,7 @@ func TestMiddleware_Bearer_Invalid(t *testing.T) {
 
 func TestMiddleware_NoCredentials(t *testing.T) {
 	d := newDB(t)
-	mw := &Middleware{DB: d}
+	mw := &Middleware{DB: d, Secret: authTestSecret}
 	srv := httptest.NewServer(mw.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
 	defer srv.Close()
 
@@ -166,12 +168,12 @@ func TestMiddleware_Cookie_SafeMethodOK(t *testing.T) {
 		seenSession = SessionIDFrom(r.Context())
 		w.WriteHeader(http.StatusNoContent)
 	})
-	mw := &Middleware{DB: d, SessionLifetime: time.Hour}
+	mw := &Middleware{DB: d, SessionLifetime: time.Hour, Secret: authTestSecret}
 	srv := httptest.NewServer(mw.Handler(next))
 	defer srv.Close()
 
 	req := newAuthedRequest(t, srv.URL)
-	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: sid})
+	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: SignCookie(authTestSecret, sid)})
 	req.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: csrf})
 	if code := do(t, req); code != http.StatusNoContent {
 		t.Errorf("status: %d", code)
@@ -188,7 +190,7 @@ func TestMiddleware_Cookie_UnsafeRequiresCSRF(t *testing.T) {
 	d := newDB(t)
 	_, sid, csrf := seedUserSession(t, d, time.Hour)
 
-	mw := &Middleware{DB: d, SessionLifetime: time.Hour}
+	mw := &Middleware{DB: d, SessionLifetime: time.Hour, Secret: authTestSecret}
 	srv := httptest.NewServer(mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})))
@@ -196,7 +198,7 @@ func TestMiddleware_Cookie_UnsafeRequiresCSRF(t *testing.T) {
 
 	// Missing header → 403.
 	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL, nil)
-	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: sid})
+	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: SignCookie(authTestSecret, sid)})
 	req.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: csrf})
 	if code := do(t, req); code != http.StatusForbidden {
 		t.Errorf("missing csrf header: expected 403, got %d", code)
@@ -204,7 +206,7 @@ func TestMiddleware_Cookie_UnsafeRequiresCSRF(t *testing.T) {
 
 	// Mismatched header → 403.
 	req, _ = http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL, nil)
-	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: sid})
+	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: SignCookie(authTestSecret, sid)})
 	req.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: csrf})
 	req.Header.Set(CSRFHeaderName, "bogus")
 	if code := do(t, req); code != http.StatusForbidden {
@@ -213,7 +215,7 @@ func TestMiddleware_Cookie_UnsafeRequiresCSRF(t *testing.T) {
 
 	// Matching header → 204.
 	req, _ = http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL, nil)
-	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: sid})
+	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: SignCookie(authTestSecret, sid)})
 	req.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: csrf})
 	req.Header.Set(CSRFHeaderName, csrf)
 	if code := do(t, req); code != http.StatusNoContent {
@@ -229,7 +231,7 @@ func TestMiddleware_Cookie_BearerWinsOverCookie(t *testing.T) {
 	userB, plainB := seedUserToken(t, d)
 
 	var seen *domain.User
-	mw := &Middleware{DB: d, SessionLifetime: time.Hour}
+	mw := &Middleware{DB: d, SessionLifetime: time.Hour, Secret: authTestSecret}
 	srv := httptest.NewServer(mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = UserFrom(r.Context())
 		w.WriteHeader(http.StatusNoContent)
@@ -237,11 +239,35 @@ func TestMiddleware_Cookie_BearerWinsOverCookie(t *testing.T) {
 	defer srv.Close()
 
 	req := newAuthedRequest(t, srv.URL)
-	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: sid})
+	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: SignCookie(authTestSecret, sid)})
 	req.Header.Set("Authorization", "Bearer "+plainB)
 	_ = do(t, req)
 	if seen == nil || seen.ID != userB.ID {
 		t.Errorf("Bearer should win; saw %+v (expected userB id=%d)", seen, userB.ID)
+	}
+}
+
+func TestMiddleware_Cookie_RejectsUnsignedAndForged(t *testing.T) {
+	d := newDB(t)
+	_, sid, csrf := seedUserSession(t, d, time.Hour)
+
+	mw := &Middleware{DB: d, SessionLifetime: time.Hour, Secret: authTestSecret}
+	srv := httptest.NewServer(mw.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
+	defer srv.Close()
+
+	cases := map[string]string{
+		"unsigned":         sid,                             // no signature at all
+		"signed-other-key": SignCookie([]byte("nope"), sid), // valid format, wrong secret
+		"truncated-sig":    SignCookie(authTestSecret, sid)[:len(SignCookie(authTestSecret, sid))-2],
+		"empty":            "",
+	}
+	for name, val := range cases {
+		req := newAuthedRequest(t, srv.URL)
+		req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: val})
+		req.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: csrf})
+		if code := do(t, req); code != http.StatusUnauthorized {
+			t.Errorf("%s: expected 401, got %d", name, code)
+		}
 	}
 }
 
@@ -250,12 +276,12 @@ func TestMiddleware_Cookie_Expired(t *testing.T) {
 	// negative lifetime → already expired
 	_, sid, csrf := seedUserSession(t, d, -time.Minute)
 
-	mw := &Middleware{DB: d, SessionLifetime: time.Hour}
+	mw := &Middleware{DB: d, SessionLifetime: time.Hour, Secret: authTestSecret}
 	srv := httptest.NewServer(mw.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
 	defer srv.Close()
 
 	req := newAuthedRequest(t, srv.URL)
-	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: sid})
+	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: SignCookie(authTestSecret, sid)})
 	req.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: csrf})
 	if code := do(t, req); code != http.StatusUnauthorized {
 		t.Errorf("expired session: expected 401, got %d", code)

@@ -25,15 +25,20 @@ func TestNewSessionID_UniqueAndB64(t *testing.T) {
 func TestSetAuthCookies_Structure(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://example/", nil)
-	SetAuthCookies(w, r, "sess-1", "csrf-1", time.Now().Add(time.Hour))
+	secret := []byte("test-secret")
+	SetAuthCookies(w, r, secret, "sess-1", "csrf-1", time.Now().Add(time.Hour))
 
 	found := map[string]*http.Cookie{}
 	for _, c := range w.Result().Cookies() {
 		found[c.Name] = c
 	}
 	s := found[SessionCookieName]
-	if s == nil || s.Value != "sess-1" {
-		t.Fatalf("session cookie: %+v", s)
+	if s == nil {
+		t.Fatalf("session cookie missing")
+	}
+	got, ok := VerifyCookie(secret, s.Value)
+	if !ok || got != "sess-1" {
+		t.Fatalf("session cookie should round-trip: ok=%v got=%q raw=%q", ok, got, s.Value)
 	}
 	if !s.HttpOnly {
 		t.Error("session cookie must be HttpOnly")

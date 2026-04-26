@@ -46,7 +46,7 @@ func authSetup(t *testing.T) *authEnv {
 	if err := d.CreateUser(t.Context(), u); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	srv := httptest.NewServer(NewRouter(d, time.Hour))
+	srv := httptest.NewServer(NewRouter(d, time.Hour, testSecret))
 	t.Cleanup(srv.Close)
 	return &authEnv{t: t, db: d, srv: srv, user: u, pw: pw}
 }

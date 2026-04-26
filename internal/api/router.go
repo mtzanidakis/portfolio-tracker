@@ -51,10 +51,13 @@ func WithAssetLookups(yahoo, coingecko prices.SymbolLookup) Option {
 // NewRouter returns the v1 API mux. /api/v1/version and /api/v1/login
 // are public; every other route requires either a Bearer API token or
 // a valid pt_session cookie (with X-CSRF-Token header on mutations).
+// The session cookie is HMAC-signed with secret; pass a non-empty value
+// in production. Tests can pass a fixed value — the middleware will
+// only accept signatures produced with the same key.
 //
 // The returned *http.ServeMux can be extended by the caller (e.g., to
 // mount a static-file handler at "/").
-func NewRouter(d *db.DB, sessionLifetime time.Duration, opts ...Option) *http.ServeMux {
+func NewRouter(d *db.DB, sessionLifetime time.Duration, secret []byte, opts ...Option) *http.ServeMux {
 	if sessionLifetime <= 0 {
 		sessionLifetime = DefaultSessionLifetime
 	}
@@ -66,13 +69,14 @@ func NewRouter(d *db.DB, sessionLifetime time.Duration, opts ...Option) *http.Se
 	mw := &auth.Middleware{
 		DB:              d,
 		SessionLifetime: sessionLifetime,
+		Secret:          secret,
 		LastUsed:        auth.NewLastUsedThrottler(time.Minute),
 	}
 	mux := http.NewServeMux()
 
 	// Public
 	mux.HandleFunc("GET /api/v1/version", versionHandler)
-	mux.HandleFunc("POST /api/v1/login", loginHandler(d, sessionLifetime))
+	mux.HandleFunc("POST /api/v1/login", loginHandler(d, sessionLifetime, secret))
 
 	protect := func(h http.HandlerFunc) http.Handler { return mw.Handler(h) }
 

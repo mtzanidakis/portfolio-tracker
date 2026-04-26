@@ -72,10 +72,12 @@ func UserFrom(ctx context.Context) *domain.User {
 // Middleware enforces authentication on the wrapped handler. It accepts
 // either an Authorization: Bearer token (API clients) or a pt_session
 // cookie plus a matching X-CSRF-Token header for state-changing methods
-// (browser clients).
+// (browser clients). The session cookie is HMAC-signed with Secret —
+// tampered or unsigned cookies are rejected before the DB lookup.
 type Middleware struct {
 	DB              *db.DB
 	SessionLifetime time.Duration
+	Secret          []byte
 	// LastUsed throttles per-token last_used_at writes so a busy CLI
 	// doesn't hammer the database. nil = update on every request
 	// (legacy behaviour, fine for tests).
@@ -129,7 +131,12 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			http.Error(w, "missing credentials", http.StatusUnauthorized)
 			return
 		}
-		session, err := m.DB.GetSession(r.Context(), sc.Value)
+		sid, ok := VerifyCookie(m.Secret, sc.Value)
+		if !ok {
+			http.Error(w, "invalid session", http.StatusUnauthorized)
+			return
+		}
+		session, err := m.DB.GetSession(r.Context(), sid)
 		if errors.Is(err, db.ErrNotFound) {
 			http.Error(w, "invalid session", http.StatusUnauthorized)
 			return
