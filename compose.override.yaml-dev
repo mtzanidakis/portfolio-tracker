@@ -1,10 +1,11 @@
 services:
   ptd:
+    # Image tag is pinned: `make build` always tags :latest and stamps
+    # the git short-sha into the binary (see internal/version), so
+    # `make run` consistently picks up whatever you just built.
+    image: portfolio-tracker:latest
     build:
       context: .
-      args:
-        VERSION: ${VERSION:-dev}
-    image: portfolio-tracker:${VERSION:-latest}
     ports:
       - "8082:8082"
 
