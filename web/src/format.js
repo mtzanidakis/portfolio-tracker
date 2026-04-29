@@ -101,3 +101,65 @@ export function previewDateFormat(pattern) {
   }
   return applyPattern(today, pattern);
 }
+
+// Reverse of fmtDate's pattern path: parse a string the user typed in
+// their chosen pattern back into a Date. Returns null when the input
+// doesn't match. 'browser' falls back to the Date constructor since we
+// can't reliably reverse Intl-formatted dates.
+const PARSE_TOKEN_RE = /YYYY|YY|MMMM|MMM|MM|M|DD|D/g;
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+export function parseDate(input, pattern) {
+  if (!input) return null;
+  if (!pattern || pattern === 'browser') {
+    const d = new Date(input);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const tokens = [];
+  let regex = '';
+  let lastIdx = 0;
+  PARSE_TOKEN_RE.lastIndex = 0;
+  let m;
+  while ((m = PARSE_TOKEN_RE.exec(pattern)) !== null) {
+    if (m.index > lastIdx) regex += escapeRegex(pattern.slice(lastIdx, m.index));
+    const t = m[0];
+    tokens.push(t);
+    switch (t) {
+      case 'YYYY': regex += '(\\d{4})'; break;
+      case 'YY':   regex += '(\\d{2})'; break;
+      case 'MMMM': regex += '(' + MONTHS_LONG.join('|')  + ')'; break;
+      case 'MMM':  regex += '(' + MONTHS_SHORT.join('|') + ')'; break;
+      case 'MM':   regex += '(\\d{2})'; break;
+      case 'M':    regex += '(\\d{1,2})'; break;
+      case 'DD':   regex += '(\\d{2})'; break;
+      case 'D':    regex += '(\\d{1,2})'; break;
+    }
+    lastIdx = m.index + t.length;
+  }
+  if (lastIdx < pattern.length) regex += escapeRegex(pattern.slice(lastIdx));
+
+  const match = input.match(new RegExp('^' + regex + '$'));
+  if (!match) return null;
+
+  let year = -1, month = -1, day = -1;
+  for (let i = 0; i < tokens.length; i++) {
+    const v = match[i + 1];
+    switch (tokens[i]) {
+      case 'YYYY': year = parseInt(v, 10); break;
+      case 'YY':   year = 2000 + parseInt(v, 10); break;
+      case 'MMMM': month = MONTHS_LONG.indexOf(v); break;
+      case 'MMM':  month = MONTHS_SHORT.indexOf(v); break;
+      case 'MM':
+      case 'M':    month = parseInt(v, 10) - 1; break;
+      case 'DD':
+      case 'D':    day = parseInt(v, 10); break;
+    }
+  }
+  if (year < 0 || month < 0 || day < 0) return null;
+  if (month > 11 || day < 1 || day > 31) return null;
+  const d = new Date(year, month, day);
+  // Reject roll-overs like Feb 30 → Mar 2.
+  if (d.getFullYear() !== year || d.getMonth() !== month || d.getDate() !== day) return null;
+  return d;
+}

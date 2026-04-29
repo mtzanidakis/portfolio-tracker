@@ -1,7 +1,22 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Icon } from './Icons.jsx';
-import { fmtMoney } from '../format.js';
+import { fmtMoney, fmtDate, getDateFormat, parseDate } from '../format.js';
 import { api } from '../api.js';
+
+// Bridge between the modal's bare 'YYYY-MM-DD' state and the user's
+// chosen display pattern. Constructed at noon LOCAL time so getDate()
+// agrees with the ISO calendar day across timezones.
+function isoToDisplay(iso, pattern) {
+  if (!iso) return '';
+  if (!pattern || pattern === 'browser') return iso;
+  return fmtDate(new Date(iso + 'T12:00:00'));
+}
+function dateToIso(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 const CASH_SIDES = ['deposit', 'withdraw', 'interest'];
 const ASSET_SIDES = ['buy', 'sell'];
@@ -28,6 +43,25 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
       ? transaction.occurred_at.slice(0, 10)
       : new Date().toISOString().slice(0, 10),
   );
+  // The visible date input mirrors `date` through the user's chosen
+  // pattern (DD/MM/YYYY etc). 'browser' falls back to the native date
+  // picker — its visible format is the user's locale, which is what
+  // 'browser' means everywhere else in the app.
+  const userPattern = getDateFormat();
+  const useNativePicker = !userPattern || userPattern === 'browser';
+  const [dateText, setDateText] = useState(() => isoToDisplay(date, userPattern));
+  // When `date` is updated from elsewhere (initial load, future
+  // changes), re-render the formatted string. No-op while the user is
+  // typing because the formatted value matches what they just entered.
+  useEffect(() => {
+    if (!useNativePicker) setDateText(isoToDisplay(date, userPattern));
+  }, [date, userPattern, useNativePicker]);
+  const onDateTextInput = (e) => {
+    const v = e.currentTarget.value;
+    setDateText(v);
+    const parsed = parseDate(v, userPattern);
+    if (parsed) setDate(dateToIso(parsed));
+  };
   const [accountId, setAccountId] = useState(transaction?.account_id || 0);
   const [fxToBase, setFxToBase] = useState(
     transaction ? String(transaction.fx_to_base || 1) : '1',
@@ -216,7 +250,13 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
           {isCash && (
             <div class="field">
               <label>Date</label>
-              <input class="input mono" type="date" value={date} onInput={e => setDate(e.currentTarget.value)} />
+              {useNativePicker ? (
+                <input class="input mono" type="date" value={date}
+                  onInput={e => setDate(e.currentTarget.value)} />
+              ) : (
+                <input class="input mono" type="text" value={dateText}
+                  placeholder={userPattern} onInput={onDateTextInput} />
+              )}
             </div>
           )}
         </div>
@@ -225,7 +265,13 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
           {!isCash && (
             <div class="field">
               <label>Date</label>
-              <input class="input mono" type="date" value={date} onInput={e => setDate(e.currentTarget.value)} />
+              {useNativePicker ? (
+                <input class="input mono" type="date" value={date}
+                  onInput={e => setDate(e.currentTarget.value)} />
+              ) : (
+                <input class="input mono" type="text" value={dateText}
+                  placeholder={userPattern} onInput={onDateTextInput} />
+              )}
             </div>
           )}
           <div class="field">

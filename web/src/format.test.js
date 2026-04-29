@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   fmtMoney, fmtPct, fmtNum,
-  fmtDate, setDateFormat, getDateFormat, previewDateFormat,
+  fmtDate, setDateFormat, getDateFormat, previewDateFormat, parseDate,
 } from './format.js';
 
 // fmtMoney delegates to Intl.NumberFormat. We assert the shape rather
@@ -178,6 +178,61 @@ describe('fmtDate', () => {
     setDateFormat('YYYY-MM-DD');
     expect(fmtDate('2026-04-01T15:00:00Z')).toMatch(/^2026-04-0[12]$/);
     expect(fmtDate(SAMPLE.getTime())).toBe('2026-04-01');
+  });
+});
+
+describe('parseDate', () => {
+  it('returns null for empty input', () => {
+    expect(parseDate('', 'DD/MM/YYYY')).toBeNull();
+    expect(parseDate(null, 'DD/MM/YYYY')).toBeNull();
+  });
+
+  it('round-trips a DD/MM/YYYY string', () => {
+    const d = parseDate('29/04/2026', 'DD/MM/YYYY');
+    expect(d).toBeInstanceOf(Date);
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(3); // April
+    expect(d.getDate()).toBe(29);
+  });
+
+  it('round-trips MM/DD/YYYY (US style)', () => {
+    const d = parseDate('04/29/2026', 'MM/DD/YYYY');
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(3);
+    expect(d.getDate()).toBe(29);
+  });
+
+  it('round-trips ISO YYYY-MM-DD', () => {
+    const d = parseDate('2026-04-29', 'YYYY-MM-DD');
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(3);
+    expect(d.getDate()).toBe(29);
+  });
+
+  it('round-trips a textual month pattern', () => {
+    const d = parseDate('29 Apr 2026', 'D MMM YYYY');
+    expect(d.getMonth()).toBe(3);
+    expect(d.getDate()).toBe(29);
+  });
+
+  it('rejects strings that do not match the pattern', () => {
+    expect(parseDate('29-04-2026', 'DD/MM/YYYY')).toBeNull();
+    expect(parseDate('1/4/2026', 'DD/MM/YYYY')).toBeNull(); // padding required
+    expect(parseDate('garbage', 'DD/MM/YYYY')).toBeNull();
+  });
+
+  it('rejects calendar roll-overs like Feb 30', () => {
+    expect(parseDate('30/02/2026', 'DD/MM/YYYY')).toBeNull();
+  });
+
+  it('round-trips through fmtDate', () => {
+    setDateFormat('DD/MM/YYYY');
+    const SAMPLE = new Date(2026, 3, 1);
+    const formatted = fmtDate(SAMPLE);
+    const parsed = parseDate(formatted, 'DD/MM/YYYY');
+    expect(parsed.getFullYear()).toBe(SAMPLE.getFullYear());
+    expect(parsed.getMonth()).toBe(SAMPLE.getMonth());
+    expect(parsed.getDate()).toBe(SAMPLE.getDate());
   });
 });
 
