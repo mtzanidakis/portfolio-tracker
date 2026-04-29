@@ -140,6 +140,56 @@ describe('AccountModal — create', () => {
   });
 });
 
+describe('AccountModal — palette filtering', () => {
+  it('hides colors already used by other accounts', () => {
+    render(
+      <AccountModal usedColors={['#c8502a', '#d4953d']}
+        onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    expect(screen.queryByRole('button', { name: 'color #c8502a' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'color #d4953d' })).not.toBeInTheDocument();
+    // A color that's not reserved should still appear.
+    expect(screen.getByRole('button', { name: 'color #a8572e' })).toBeInTheDocument();
+  });
+
+  it('always shows 6 swatches by backfilling from the reserve pool', () => {
+    const { container } = render(
+      <AccountModal usedColors={['#c8502a', '#d4953d', '#a8572e']}
+        onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    const swatches = container.querySelectorAll('button[aria-label^="color "]');
+    expect(swatches.length).toBe(6);
+  });
+
+  it('defaults a new account to the first non-reserved color', async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <AccountModal usedColors={['#c8502a', '#d4953d']}
+        onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    await user.type(fieldByLabel(container, 'Name'), 'X');
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+    await waitFor(() => expect(api.createAccount).toHaveBeenCalled());
+    expect(api.createAccount.mock.calls[0][0].color).toBe('#a8572e');
+  });
+
+  it('keeps the edited account\'s own color in the palette even if listed as used', () => {
+    const account = {
+      id: 7, name: 'X', type: 'Brokerage', short: 'X',
+      color: '#c8502a', currency: 'USD',
+    };
+    render(
+      <AccountModal account={account}
+        usedColors={['#c8502a', '#d4953d']}
+        onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    // Own color stays selectable.
+    expect(screen.getByRole('button', { name: 'color #c8502a' })).toBeInTheDocument();
+    // Other reserved colors are still hidden.
+    expect(screen.queryByRole('button', { name: 'color #d4953d' })).not.toBeInTheDocument();
+  });
+});
+
 describe('AccountModal — edit', () => {
   it('seeds the form from the account prop and dispatches updateAccount', async () => {
     const user = userEvent.setup();

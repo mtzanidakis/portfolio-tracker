@@ -281,6 +281,7 @@ export function AccountsPage({ privacy, onOpenActivity }) {
 
       {showAdd && (
         <AccountModal
+          usedColors={accounts.map(a => a.color).filter(Boolean)}
           onClose={() => setShowAdd(false)}
           onSaved={() => { setShowAdd(false); load(); }}
         />
@@ -288,6 +289,7 @@ export function AccountsPage({ privacy, onOpenActivity }) {
       {modalAccount && (
         <AccountModal
           account={modalAccount}
+          usedColors={accounts.map(a => a.color).filter(Boolean)}
           onClose={() => setModalAccount(null)}
           onSaved={() => { setModalAccount(null); load(); }}
         />

@@ -11,15 +11,41 @@ const TYPES = [
   'Other',
 ];
 
-// Earthy palette lifted from the design mock.
-const COLOURS = ['#c8502a', '#d4953d', '#a8572e', '#7a8c6f', '#b8632e', '#c9a87c'];
+// The swatch row always shows SWATCH_COUNT options. Primaries come
+// from the design mock; the rest are reserves that backfill whenever
+// a higher-priority color is taken by another account, so the row
+// stays full and varied across many accounts.
+const SWATCH_COUNT = 6;
+const COLOURS = [
+  // Primary 6 — earthy palette from the design mock.
+  '#c8502a', '#d4953d', '#a8572e', '#7a8c6f', '#b8632e', '#c9a87c',
+  // 24 reserves across warm earth, cool, and dusky jewel tones.
+  '#b3505a', '#4f7c5f', '#5b8a82', '#6f8ea6', '#8d6c9f', '#5d6d7a',
+  '#9c4a3e', '#e07b4c', '#bd8c2e', '#8a7344', '#cf6f55', '#b89665',
+  '#5a7048', '#3f5b4e', '#638a64', '#3a6c75', '#4a829e', '#3a5670',
+  '#7fa6b3', '#7a4d61', '#5e4b7a', '#a3678f', '#c97a8a', '#a85a6f',
+];
 
-export function AccountModal({ account, onClose, onSaved }) {
+export function AccountModal({ account, usedColors = [], onClose, onSaved }) {
   const editing = !!account;
+  // Build the reserved set: colors picked by other accounts. The
+  // account currently being edited keeps its own color available.
+  const reserved = new Set(usedColors);
+  if (account?.color) reserved.delete(account.color);
+  const firstFree = COLOURS.find(c => !reserved.has(c)) || COLOURS[0];
+
   const [name, setName] = useState(account?.name || '');
   const [type, setType] = useState(account?.type || TYPES[0]);
   const [short, setShort] = useState(account?.short || '');
-  const [color, setColor] = useState(account?.color || COLOURS[0]);
+  const [color, setColor] = useState(account?.color || firstFree);
+  // Pick the first SWATCH_COUNT colors that aren't reserved. Whatever
+  // the user has actively selected stays in the row even if it's
+  // nominally reserved (defensive against stale data).
+  const palette = [];
+  for (const c of COLOURS) {
+    if (palette.length >= SWATCH_COUNT) break;
+    if (!reserved.has(c) || c === color) palette.push(c);
+  }
   const [currency, setCurrency] = useState(account?.currency || 'USD');
   const [err, setErr] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -97,7 +123,7 @@ export function AccountModal({ account, onClose, onSaved }) {
           <div class="field">
             <label>Color</label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', height: 38 }}>
-              {COLOURS.map(c => (
+              {palette.map(c => (
                 <button key={c} type="button"
                   onClick={() => setColor(c)}
                   aria-label={`color ${c}`}
