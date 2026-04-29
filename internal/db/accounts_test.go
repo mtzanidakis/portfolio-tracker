@@ -50,6 +50,34 @@ func TestAccountCRUD(t *testing.T) {
 	}
 }
 
+func TestDeleteAccount_CascadesTransactions(t *testing.T) {
+	db := newTestDB(t)
+	ctx := t.Context()
+
+	u := mustCreateUser(t, db, "cascade@test.io")
+	acc := mustCreateAccount(t, db, u.ID, domain.USD)
+	mustCreateAsset(t, db, "AAPL", domain.AssetStock, domain.USD)
+
+	tx := &domain.Transaction{
+		UserID: u.ID, AccountID: acc.ID, AssetSymbol: "AAPL",
+		Side: domain.SideBuy, Qty: 1, Price: 100, FxToBase: 1,
+		OccurredAt: mustTime(t, "2026-04-10T10:00:00Z"),
+	}
+	if err := db.CreateTransaction(ctx, tx); err != nil {
+		t.Fatalf("create tx: %v", err)
+	}
+
+	if err := db.DeleteAccount(ctx, acc.ID); err != nil {
+		t.Fatalf("delete account: %v", err)
+	}
+	if _, err := db.GetAccount(ctx, acc.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("account not deleted: %v", err)
+	}
+	if _, err := db.GetTransaction(ctx, tx.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("transaction not cascaded: %v", err)
+	}
+}
+
 func TestCreateAccount_InvalidCurrency(t *testing.T) {
 	db := newTestDB(t)
 	u := mustCreateUser(t, db, "bad@test.io")

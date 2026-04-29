@@ -128,7 +128,11 @@ export function AccountsPage({ privacy, onOpenActivity }) {
   };
 
   const handleDelete = async (acc) => {
-    if (!confirm(`Delete "${acc.name}"? Accounts referenced by transactions cannot be deleted.`)) return;
+    const txCount = statsFor(acc.id).count;
+    const warning = txCount > 0
+      ? `Delete "${acc.name}" and its ${txCount} transaction${txCount === 1 ? '' : 's'}? This cannot be undone.`
+      : `Delete "${acc.name}"?`;
+    if (!confirm(warning)) return;
     try {
       await api.deleteAccount(acc.id);
       load();

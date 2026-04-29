@@ -83,15 +83,30 @@ func (db *DB) UpdateAccount(ctx context.Context, acc *domain.Account) error {
 	return nil
 }
 
-// DeleteAccount removes the account (fails if transactions still reference it).
+// DeleteAccount removes the account along with every transaction that
+// references it. The schema-level FK is ON DELETE RESTRICT, so we
+// cascade in the app layer inside a single transaction — failure
+// rolls back both deletes.
 func (db *DB) DeleteAccount(ctx context.Context, id int64) error {
-	res, err := db.ExecContext(ctx, `DELETE FROM accounts WHERE id = ?`, id)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM transactions WHERE account_id = ?`, id); err != nil {
+		return fmt.Errorf("delete account transactions: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM accounts WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete account: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
 }
