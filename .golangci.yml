@@ -32,6 +32,17 @@ linters:
           - gocritic
           - unparam
           - bodyclose
+      # gosec G124: the auth cookies set Secure dynamically (auto-
+      # detected from the request — required so HTTP dev / reverse-
+      # proxy setups still work) and the CSRF cookie deliberately has
+      # HttpOnly=false so the SPA can echo it via the X-CSRF-Token
+      # header for the double-submit check. The pattern is correct
+      # for our use case but newer gosec releases flag it because the
+      # flags aren't statically `true`.
+      - path: internal/auth/session\.go
+        linters:
+          - gosec
+        text: G124
 
 formatters:
   enable:
