@@ -136,15 +136,11 @@ func (db *DB) GetTransaction(ctx context.Context, id int64) (*domain.Transaction
 	return t, err
 }
 
-// ListTransactions returns transactions matching f, ordered newest first.
-// Free-text search routes through the tx_fts virtual table so symbol,
-// the asset's display name and the tx note are indexed together with
-// unicode-aware tokenisation (no LIKE scan, no LEFT JOIN).
-func (db *DB) ListTransactions(ctx context.Context, f TxFilter) ([]*domain.Transaction, error) {
-	var (
-		conds []string
-		args  []any
-	)
+// buildTxFilterClauses turns the user/account/symbol/side(s)/date/q
+// portion of a TxFilter into SQL WHERE fragments and bind arguments.
+// Sort + cursor are deliberately *not* handled here — those are
+// list-only and TransactionSummary reuses just the filter half.
+func buildTxFilterClauses(f TxFilter) (conds []string, args []any) {
 	if f.UserID != 0 {
 		conds = append(conds, "t.user_id = ?")
 		args = append(args, f.UserID)
@@ -186,6 +182,15 @@ func (db *DB) ListTransactions(ctx context.Context, f TxFilter) ([]*domain.Trans
 			conds = append(conds, "1 = 0")
 		}
 	}
+	return conds, args
+}
+
+// ListTransactions returns transactions matching f, ordered newest first.
+// Free-text search routes through the tx_fts virtual table so symbol,
+// the asset's display name and the tx note are indexed together with
+// unicode-aware tokenisation (no LIKE scan, no LEFT JOIN).
+func (db *DB) ListTransactions(ctx context.Context, f TxFilter) ([]*domain.Transaction, error) {
+	conds, args := buildTxFilterClauses(f)
 	// Resolve sort + order with safe fallbacks.
 	sortKey := f.Sort
 	if _, ok := txSortColumns[sortKey]; !ok {
@@ -281,29 +286,36 @@ type TxSummary struct {
 	SellCount      int     `json:"sell_count"`
 }
 
-// TransactionSummary returns the aggregate totals for a user in one
-// round trip. Uses the idx_tx_user_date index for a cheap scan; the
-// CASE-based sums let us avoid five separate queries.
-func (db *DB) TransactionSummary(ctx context.Context, userID int64) (*TxSummary, error) {
-	var s TxSummary
-	err := db.QueryRowContext(ctx, `
+// TransactionSummary returns aggregate totals over the filtered set.
+// Reuses the same WHERE-builder as ListTransactions so the hero stats
+// stay in lockstep with whatever rows the table is showing — pick an
+// account or asset filter and the counts on top contract with it.
+// The CASE-based sums collapse five would-be queries into one round
+// trip; the idx_tx_user_date index keeps the scan cheap when only a
+// user filter is present.
+func (db *DB) TransactionSummary(ctx context.Context, f TxFilter) (*TxSummary, error) {
+	conds, args := buildTxFilterClauses(f)
+	q := `
         SELECT COUNT(*),
-               COUNT(DISTINCT asset_symbol),
-               COUNT(DISTINCT account_id),
-               COALESCE(SUM(CASE WHEN side = 'buy'      THEN qty*price*fx_to_base ELSE 0 END), 0),
-               COALESCE(SUM(CASE WHEN side = 'sell'     THEN qty*price*fx_to_base ELSE 0 END), 0),
-               COALESCE(SUM(CASE WHEN side = 'deposit'  THEN qty*price*fx_to_base ELSE 0 END), 0),
-               COALESCE(SUM(CASE WHEN side = 'withdraw' THEN qty*price*fx_to_base ELSE 0 END), 0),
-               COALESCE(SUM(CASE WHEN side = 'interest' THEN qty*price*fx_to_base ELSE 0 END), 0),
-               COALESCE(SUM(CASE WHEN side = 'buy'  THEN 1 ELSE 0 END), 0),
-               COALESCE(SUM(CASE WHEN side = 'sell' THEN 1 ELSE 0 END), 0)
-          FROM transactions
-         WHERE user_id = ?`, userID).
+               COUNT(DISTINCT t.asset_symbol),
+               COUNT(DISTINCT t.account_id),
+               COALESCE(SUM(CASE WHEN t.side = 'buy'      THEN t.qty*t.price*t.fx_to_base ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN t.side = 'sell'     THEN t.qty*t.price*t.fx_to_base ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN t.side = 'deposit'  THEN t.qty*t.price*t.fx_to_base ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN t.side = 'withdraw' THEN t.qty*t.price*t.fx_to_base ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN t.side = 'interest' THEN t.qty*t.price*t.fx_to_base ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN t.side = 'buy'  THEN 1 ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN t.side = 'sell' THEN 1 ELSE 0 END), 0)
+          FROM transactions t`
+	if len(conds) > 0 {
+		q += " WHERE " + strings.Join(conds, " AND ")
+	}
+	var s TxSummary
+	if err := db.QueryRowContext(ctx, q, args...).
 		Scan(&s.Count, &s.AssetCount, &s.AccountCount,
 			&s.TotalBuys, &s.TotalSells,
 			&s.TotalDeposits, &s.TotalWithdraws, &s.TotalInterest,
-			&s.BuyCount, &s.SellCount)
-	if err != nil {
+			&s.BuyCount, &s.SellCount); err != nil {
 		return nil, fmt.Errorf("tx summary: %w", err)
 	}
 	return &s, nil

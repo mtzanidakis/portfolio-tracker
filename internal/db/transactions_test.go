@@ -170,6 +170,95 @@ func TestListTransactions_Filters(t *testing.T) {
 	}
 }
 
+func TestTransactionSummary_RespectsFilter(t *testing.T) {
+	db := newTestDB(t)
+	ctx := t.Context()
+
+	u := mustCreateUser(t, db, "sum@test.io")
+	a1 := mustCreateAccount(t, db, u.ID, domain.USD)
+	a2 := &domain.Account{
+		UserID: u.ID, Name: "Second", Type: "Brokerage", Short: "S",
+		Color: "#000", Currency: domain.USD,
+	}
+	if err := db.CreateAccount(ctx, a2); err != nil {
+		t.Fatalf("create acc2: %v", err)
+	}
+	mustCreateAsset(t, db, "AAPL", domain.AssetStock, domain.USD)
+	mustCreateAsset(t, db, "BTC", domain.AssetCrypto, domain.USD)
+
+	seed := []*domain.Transaction{
+		// a1: AAPL buy + AAPL sell + BTC buy
+		{
+			UserID: u.ID, AccountID: a1.ID, AssetSymbol: "AAPL", Side: domain.SideBuy,
+			Qty: 1, Price: 100, FxToBase: 1,
+			OccurredAt: mustTime(t, "2026-01-01T00:00:00Z"),
+		},
+		{
+			UserID: u.ID, AccountID: a1.ID, AssetSymbol: "AAPL", Side: domain.SideSell,
+			Qty: 1, Price: 110, FxToBase: 1,
+			OccurredAt: mustTime(t, "2026-02-01T00:00:00Z"),
+		},
+		{
+			UserID: u.ID, AccountID: a1.ID, AssetSymbol: "BTC", Side: domain.SideBuy,
+			Qty: 1, Price: 50000, FxToBase: 1,
+			OccurredAt: mustTime(t, "2026-03-01T00:00:00Z"),
+		},
+		// a2: AAPL buy only
+		{
+			UserID: u.ID, AccountID: a2.ID, AssetSymbol: "AAPL", Side: domain.SideBuy,
+			Qty: 2, Price: 200, FxToBase: 1,
+			OccurredAt: mustTime(t, "2026-04-01T00:00:00Z"),
+		},
+	}
+	for _, tx := range seed {
+		if err := db.CreateTransaction(ctx, tx); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	// Unfiltered: 4 tx, 2 assets, 2 accounts.
+	got, err := db.TransactionSummary(ctx, TxFilter{UserID: u.ID})
+	if err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+	if got.Count != 4 || got.AssetCount != 2 || got.AccountCount != 2 {
+		t.Errorf("unfiltered: %+v", got)
+	}
+	// 100 + 50000 + 400 = 50500 buys; 110 sells.
+	if got.TotalBuys != 50500 || got.TotalSells != 110 {
+		t.Errorf("unfiltered totals: buys=%v sells=%v", got.TotalBuys, got.TotalSells)
+	}
+	if got.BuyCount != 3 || got.SellCount != 1 {
+		t.Errorf("unfiltered counts: buy=%d sell=%d", got.BuyCount, got.SellCount)
+	}
+
+	// Account-scoped: only a1's three tx.
+	got, _ = db.TransactionSummary(ctx, TxFilter{UserID: u.ID, AccountID: a1.ID})
+	if got.Count != 3 || got.AccountCount != 1 || got.AssetCount != 2 {
+		t.Errorf("acc=a1: %+v", got)
+	}
+	if got.TotalBuys != 50100 || got.TotalSells != 110 {
+		t.Errorf("acc=a1 totals: %+v", got)
+	}
+
+	// Asset-scoped: only AAPL across both accounts → 3 tx, 2 accts.
+	got, _ = db.TransactionSummary(ctx, TxFilter{UserID: u.ID, AssetSymbol: "AAPL"})
+	if got.Count != 3 || got.AccountCount != 2 || got.AssetCount != 1 {
+		t.Errorf("asset=AAPL: %+v", got)
+	}
+	if got.TotalBuys != 500 || got.TotalSells != 110 {
+		t.Errorf("asset=AAPL totals: %+v", got)
+	}
+
+	// Side filter: trades buys only.
+	got, _ = db.TransactionSummary(ctx, TxFilter{
+		UserID: u.ID, Sides: []domain.TxSide{domain.SideBuy},
+	})
+	if got.Count != 3 || got.SellCount != 0 || got.BuyCount != 3 {
+		t.Errorf("side=buy: %+v", got)
+	}
+}
+
 func TestListTransactions_FreeTextSearch(t *testing.T) {
 	db := newTestDB(t)
 	ctx := t.Context()

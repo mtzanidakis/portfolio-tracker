@@ -58,11 +58,23 @@ export function ActivitiesPage({ privacy, currency, user, initialAccountId = 0, 
     setAccounts(accs || []);
   };
 
+  // Recompute aggregates over the current filter so the hero counters
+  // contract / expand alongside the rows. A request-sequence ref guards
+  // against stale responses the same way fetchPage does — overlapping
+  // filter changes only land the latest result.
+  const summarySeq = useRef(0);
   const reloadSummary = async () => {
+    const mySeq = ++summarySeq.current;
     try {
-      setSummary(await api.txSummary());
+      const s = await api.txSummary({
+        q: debouncedQ,
+        side: FILTER_TO_SIDES[filter] || '',
+        accountId,
+        symbol: assetSymbol,
+      });
+      if (summarySeq.current === mySeq) setSummary(s);
     } catch (e) {
-      setErr(e.message);
+      if (summarySeq.current === mySeq) setErr(e.message);
     }
   };
 
@@ -99,17 +111,21 @@ export function ActivitiesPage({ privacy, currency, user, initialAccountId = 0, 
     }
   };
 
-  // Initial load: lookup tables + first page + aggregate stats.
+  // Initial load: lookup tables only — the filter-effect below fires
+  // on mount and covers the first page + summary fetch.
   useEffect(() => {
     loadLookups();
-    reloadSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Any time the filter, debounced query, account, symbol, sort or
-  // order change, reset to page 1 with the new parameters.
+  // order change, reset to page 1 *and* re-pull the aggregates so the
+  // hero numbers track the visible rows. Sort / order don't affect
+  // totals so reloadSummary skips them, but rerunning is cheap and
+  // keeps the wiring simple.
   useEffect(() => {
     fetchPage({ reset: true });
+    reloadSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, debouncedQ, accountId, assetSymbol, sort, order]);
 

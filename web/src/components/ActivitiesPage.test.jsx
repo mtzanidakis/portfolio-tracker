@@ -123,6 +123,32 @@ describe('ActivitiesPage — filter / sort / pagination', () => {
     expect(lastQuery().side).toBe('deposit,withdraw,interest');
   });
 
+  it('refetches the summary with the filter params when the user picks Trades', async () => {
+    const user = userEvent.setup();
+    render(<ActivitiesPage privacy={false} currency="USD" user={{}} />);
+    await untilFirstFetch();
+    api.txSummary.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Trades' }));
+    await waitFor(() => expect(api.txSummary).toHaveBeenCalled());
+    const lastSummaryArg = api.txSummary.mock.calls.at(-1)[0];
+    expect(lastSummaryArg).toMatchObject({
+      side: 'buy,sell', accountId: 0, symbol: '', q: '',
+    });
+  });
+
+  it('refetches the summary with account + symbol when seeded by props', async () => {
+    render(
+      <ActivitiesPage privacy={false} currency="USD" user={{}}
+        initialAccountId={2} initialAssetSymbol="AAPL" />,
+    );
+    await waitFor(() => expect(api.txSummary).toHaveBeenCalled());
+    // First call is the unfiltered initial fetch (mount); the
+    // filter-effect fires immediately after with the seeded props.
+    const filtered = api.txSummary.mock.calls.at(-1)[0];
+    expect(filtered).toMatchObject({ accountId: 2, symbol: 'AAPL' });
+  });
+
   it('clearing the asset pill drops the symbol filter', async () => {
     const user = userEvent.setup();
     render(

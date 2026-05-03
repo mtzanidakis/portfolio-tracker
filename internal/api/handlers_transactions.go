@@ -25,48 +25,58 @@ type txRequest struct {
 	Note        string    `json:"note"`
 }
 
+// parseTxFilterQuery reads the account_id / symbol / side / q / from /
+// to filter params from r.URL.Query() into a TxFilter scoped to userID.
+// List- and summary-handlers share this so a filter applied in the UI
+// shapes both the rows and the hero counters identically.
+func parseTxFilterQuery(r *http.Request, userID int64) db.TxFilter {
+	q := r.URL.Query()
+	f := db.TxFilter{UserID: userID}
+	if v := q.Get("account_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			f.AccountID = id
+		}
+	}
+	if v := q.Get("symbol"); v != "" {
+		f.AssetSymbol = v
+	}
+	if v := q.Get("side"); v != "" {
+		// Comma-separated → multi-side IN filter (UI group tabs).
+		// Single value → stays on the backward-compat Side field so
+		// ptagent's --side flag keeps working untouched.
+		if strings.Contains(v, ",") {
+			for s := range strings.SplitSeq(v, ",") {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					f.Sides = append(f.Sides, domain.TxSide(s))
+				}
+			}
+		} else {
+			f.Side = domain.TxSide(v)
+		}
+	}
+	if v := q.Get("q"); v != "" {
+		f.Q = strings.TrimSpace(v)
+	}
+	if v := q.Get("from"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.From = t
+		}
+	}
+	if v := q.Get("to"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.To = t
+		}
+	}
+	return f
+}
+
 func listTransactionsHandler(d *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFrom(r.Context())
 		q := r.URL.Query()
 
-		f := db.TxFilter{UserID: u.ID}
-		if v := q.Get("account_id"); v != "" {
-			if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-				f.AccountID = id
-			}
-		}
-		if v := q.Get("symbol"); v != "" {
-			f.AssetSymbol = v
-		}
-		if v := q.Get("side"); v != "" {
-			// Comma-separated → multi-side IN filter (UI group tabs).
-			// Single value → stays on the backward-compat Side field so
-			// ptagent's --side flag keeps working untouched.
-			if strings.Contains(v, ",") {
-				for s := range strings.SplitSeq(v, ",") {
-					s = strings.TrimSpace(s)
-					if s != "" {
-						f.Sides = append(f.Sides, domain.TxSide(s))
-					}
-				}
-			} else {
-				f.Side = domain.TxSide(v)
-			}
-		}
-		if v := q.Get("q"); v != "" {
-			f.Q = strings.TrimSpace(v)
-		}
-		if v := q.Get("from"); v != "" {
-			if t, err := time.Parse(time.RFC3339, v); err == nil {
-				f.From = t
-			}
-		}
-		if v := q.Get("to"); v != "" {
-			if t, err := time.Parse(time.RFC3339, v); err == nil {
-				f.To = t
-			}
-		}
+		f := parseTxFilterQuery(r, u.ID)
 		if v := q.Get("limit"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil && n > 0 {
 				f.Limit = n
@@ -190,13 +200,15 @@ func createTransactionHandler(d *db.DB) http.HandlerFunc {
 	}
 }
 
-// transactionSummaryHandler returns one-shot aggregates for the
-// signed-in user — used by the Activities hero so the page doesn't
-// have to paginate through the whole history just to draw totals.
+// transactionSummaryHandler returns aggregates for the signed-in user
+// over the same filter that lists rows. The UI re-fires this every
+// time the Activities filter changes so the hero totals always match
+// what the table is showing.
 func transactionSummaryHandler(d *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFrom(r.Context())
-		s, err := d.TransactionSummary(r.Context(), u.ID)
+		f := parseTxFilterQuery(r, u.ID)
+		s, err := d.TransactionSummary(r.Context(), f)
 		if err != nil {
 			writeDBError(w, err)
 			return

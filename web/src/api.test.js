@@ -216,6 +216,8 @@ describe('endpoint shapes', () => {
     await call(() => api.transactions());           assertCall('GET',  '/api/v1/transactions');
     await call(() => api.transactions('?limit=5')); assertCall('GET',  '/api/v1/transactions?limit=5');
     await call(() => api.txSummary());              assertCall('GET',  '/api/v1/transactions/summary');
+    await call(() => api.txSummary({ accountId: 7, side: 'buy,sell', symbol: 'AAPL', q: 'note' }));
+    assertCall('GET', '/api/v1/transactions/summary?q=note&side=buy%2Csell&symbol=AAPL&account_id=7');
     await call(() => api.createTx({ qty: 1 }));     assertCall('POST', '/api/v1/transactions', { qty: 1 });
     await call(() => api.updateTx(9, { qty: 2 })); assertCall('PATCH', '/api/v1/transactions/9', { qty: 2 });
     await call(() => api.deleteTx(9));              assertCall('DELETE', '/api/v1/transactions/9', undefined);

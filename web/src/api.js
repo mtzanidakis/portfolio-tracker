@@ -121,7 +121,19 @@ export const api = {
       nextCursor: r.headers.get('X-Next-Cursor') || '',
     };
   },
-  txSummary:     ()      => request('GET',   '/api/v1/transactions/summary'),
+  // txSummary mirrors transactionsPage's filter params so the
+  // Activities hero recomputes its counters in lockstep with whatever
+  // filter the user picked. Calling with no args returns the totals
+  // across every transaction, same as before.
+  txSummary: ({ q = '', side = '', symbol = '', accountId = 0 } = {}) => {
+    const params = new URLSearchParams();
+    if (q)         params.set('q', q);
+    if (side)      params.set('side', side);
+    if (symbol)    params.set('symbol', symbol);
+    if (accountId) params.set('account_id', accountId);
+    const qs = params.toString();
+    return request('GET', '/api/v1/transactions/summary' + (qs ? '?' + qs : ''));
+  },
   createTx:      (p)     => request('POST',  '/api/v1/transactions', p),
   updateTx:      (id, p) => request('PATCH', `/api/v1/transactions/${id}`, p),
   deleteTx:      (id)    => request('DELETE', `/api/v1/transactions/${id}`),
