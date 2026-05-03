@@ -76,6 +76,49 @@ describe('Sidebar', () => {
     await user.click(container.querySelector('.sidebar-backdrop'));
     expect(props.onClose).toHaveBeenCalledOnce();
   });
+
+  it('omits the collapse button when onToggleCollapse is missing', () => {
+    renderSidebar();
+    expect(screen.queryByRole('button', { name: /collapse sidebar|expand sidebar/i }))
+      .not.toBeInTheDocument();
+  });
+
+  it('shows a "Collapse sidebar" button when expanded and toggles on click', async () => {
+    const user = userEvent.setup();
+    const onToggleCollapse = vi.fn();
+    renderSidebar({ collapsed: false, onToggleCollapse });
+    const btn = screen.getByRole('button', { name: /collapse sidebar/i });
+    await user.click(btn);
+    expect(onToggleCollapse).toHaveBeenCalledOnce();
+  });
+
+  it('shows an "Expand sidebar" button and a .collapsed aside when collapsed', () => {
+    const { container } = renderSidebar({ collapsed: true, onToggleCollapse: vi.fn() });
+    expect(screen.getByRole('button', { name: /expand sidebar/i })).toBeInTheDocument();
+    expect(container.querySelector('aside.sidebar').className).toContain('collapsed');
+  });
+
+  it('adds title tooltips to nav items only when collapsed', () => {
+    const { container, rerender } = render(
+      <Sidebar page="performance" setPage={vi.fn()} user={SAMPLE_USER}
+        open={false} collapsed onToggleCollapse={vi.fn()}
+        onClose={vi.fn()} onProfile={vi.fn()} onSettings={vi.fn()}
+        onTokens={vi.fn()} onSignOut={vi.fn()} />,
+    );
+    const navWhenCollapsed = container.querySelector('.nav-item');
+    expect(navWhenCollapsed.getAttribute('title')).toBe('Performance');
+
+    rerender(
+      <Sidebar page="performance" setPage={vi.fn()} user={SAMPLE_USER}
+        open={false} collapsed={false} onToggleCollapse={vi.fn()}
+        onClose={vi.fn()} onProfile={vi.fn()} onSettings={vi.fn()}
+        onTokens={vi.fn()} onSignOut={vi.fn()} />,
+    );
+    const navWhenExpanded = container.querySelector('.nav-item');
+    // Preact renders an empty string for title={undefined}; what
+    // matters is that no real tooltip is shown.
+    expect(navWhenExpanded.getAttribute('title') || '').toBe('');
+  });
 });
 
 describe('Topbar', () => {

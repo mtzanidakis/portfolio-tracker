@@ -44,6 +44,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tokensOpen, setTokensOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('pt-sidebar-collapsed') === '1');
   const [refreshTick, setRefreshTick] = useState(0);
   // Seed state for cross-page navigation. Clicking an account card or
   // asset row routes to Activities with this id/symbol pre-selected;
@@ -71,6 +72,7 @@ export function App() {
     setRefreshTick(t => t + 1);
   }, [dateFormat]);
   useEffect(() => { localStorage.setItem('pt-privacy', privacy ? '1' : '0'); }, [privacy]);
+  useEffect(() => { localStorage.setItem('pt-sidebar-collapsed', sidebarCollapsed ? '1' : '0'); }, [sidebarCollapsed]);
 
   // The account / asset filter seeds are one-shots handed to
   // ActivitiesPage on mount. Clear them as soon as the page becomes
@@ -149,10 +151,12 @@ export function App() {
   };
 
   return (
-    <div class="app" data-screen-label={page}>
+    <div class="app" data-screen-label={page} data-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'}>
       <Sidebar
         page={page} setPage={setPage} user={user}
         open={sidebarOpen}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(c => !c)}
         onClose={() => setSidebarOpen(false)}
         onProfile={() => setProfileOpen(true)}
         onSettings={() => setSettingsOpen(true)}

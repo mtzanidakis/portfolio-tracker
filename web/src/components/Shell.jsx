@@ -3,7 +3,7 @@ import { Icon, BrandMark } from './Icons.jsx';
 import { UserMenu } from './UserMenu.jsx';
 import { fmtMoney } from '../format.js';
 
-export function Sidebar({ page, setPage, user, open, onClose, onProfile, onSettings, onTokens, onSignOut }) {
+export function Sidebar({ page, setPage, user, open, collapsed, onToggleCollapse, onClose, onProfile, onSettings, onTokens, onSignOut }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const items = [
     { id: 'performance',  label: 'Performance',     icon: 'chart' },
@@ -20,7 +20,15 @@ export function Sidebar({ page, setPage, user, open, onClose, onProfile, onSetti
   return (
     <>
       <div class={`sidebar-backdrop ${open ? 'on' : ''}`} onClick={onClose} />
-      <aside class={`sidebar ${open ? 'open' : ''}`}>
+      <aside class={`sidebar ${open ? 'open' : ''} ${collapsed ? 'collapsed' : ''}`}>
+        {onToggleCollapse && (
+          <button type="button" class="sidebar-collapse-btn"
+            onClick={onToggleCollapse}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} />
+          </button>
+        )}
         <div class="brand">
           <div class="brand-mark"><BrandMark size={20} /></div>
           <div class="brand-name">Portfolio Tracker</div>
@@ -30,9 +38,10 @@ export function Sidebar({ page, setPage, user, open, onClose, onProfile, onSetti
           {items.map(it => (
             <button key={it.id}
               class={`nav-item ${page === it.id ? 'active' : ''}`}
-              onClick={() => go(it.id)}>
+              onClick={() => go(it.id)}
+              title={collapsed ? it.label : undefined}>
               <Icon name={it.icon} />
-              {it.label}
+              <span class="label">{it.label}</span>
             </button>
           ))}
         </div>

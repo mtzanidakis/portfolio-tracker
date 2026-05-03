@@ -318,6 +318,8 @@ input, select, textarea {
   position: sticky;
   top: 0;
   height: 100vh;
+  /* sticky establishes a containing block for the mid-height collapse
+   * tab anchored to .sidebar via position: absolute. */
 }
 
 .brand {
@@ -412,6 +414,61 @@ input, select, textarea {
 .user-chip-meta { line-height: 1.2; }
 .user-chip-meta .n { font-size: 13px; }
 .user-chip-meta .e { font-size: 11px; color: var(--text-faint); }
+
+/* Mid-height "tab" anchored to the sidebar's right edge — Vercel /
+ * Supabase pattern. Sits half-on, half-off the border so the affordance
+ * reads as a pull-handle. */
+.sidebar-collapse-btn {
+  position: absolute;
+  top: 50%;
+  right: -11px;
+  transform: translateY(-50%);
+  width: 22px; height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  z-index: 3;
+  box-shadow: var(--shadow-sm);
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.sidebar-collapse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+.sidebar-collapse-btn svg {
+  width: 14px; height: 14px;
+  stroke-width: 2;
+}
+
+/* Collapsed sidebar — only icons remain visible. Triggered by the
+ * toggle button in the brand row. Stored in localStorage so the user's
+ * choice persists across reloads. Disabled below 900px (drawer mode
+ * already handles narrow viewports). */
+.app[data-sidebar-collapsed="true"] {
+  grid-template-columns: 72px 1fr;
+}
+.app[data-sidebar-collapsed="true"] .sidebar { padding: 22px 10px; }
+.app[data-sidebar-collapsed="true"] .brand {
+  flex-direction: column;
+  padding: 0;
+  gap: 8px;
+}
+.app[data-sidebar-collapsed="true"] .brand-name { display: none; }
+.app[data-sidebar-collapsed="true"] .sidebar-collapse-btn { margin-left: 0; }
+.app[data-sidebar-collapsed="true"] .nav-label { display: none; }
+.app[data-sidebar-collapsed="true"] .nav-item {
+  justify-content: center;
+  padding: 9px 6px;
+}
+.app[data-sidebar-collapsed="true"] .nav-item .label { display: none; }
+.app[data-sidebar-collapsed="true"] .sidebar-footer { padding: 12px 4px; }
+.app[data-sidebar-collapsed="true"] .user-chip { justify-content: center; }
+.app[data-sidebar-collapsed="true"] .user-chip-meta { display: none; }
 
 /* ====== Main ====== */
 .main {
@@ -1008,9 +1065,21 @@ html[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,0.55); }
 }
 
 @media (max-width: 900px) {
-  .app {
+  .app,
+  .app[data-sidebar-collapsed="true"] {
     grid-template-columns: 1fr;
   }
+
+  /* In drawer mode the sidebar is full-width when open; ignore the
+   * desktop collapse and force the expanded layout back. */
+  .app[data-sidebar-collapsed="true"] .sidebar { padding: 22px 16px; }
+  .app[data-sidebar-collapsed="true"] .brand { flex-direction: row; padding: 0 8px; gap: 10px; }
+  .app[data-sidebar-collapsed="true"] .brand-name { display: block; }
+  .app[data-sidebar-collapsed="true"] .nav-label { display: block; }
+  .app[data-sidebar-collapsed="true"] .nav-item { justify-content: flex-start; padding: 9px 10px; }
+  .app[data-sidebar-collapsed="true"] .nav-item .label { display: inline; }
+  .app[data-sidebar-collapsed="true"] .user-chip-meta { display: block; }
+  .sidebar-collapse-btn { display: none; }
 
   .sidebar {
     position: fixed;
