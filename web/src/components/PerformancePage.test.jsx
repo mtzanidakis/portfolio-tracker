@@ -108,6 +108,27 @@ describe('PerformancePage — hero + period stats', () => {
       expect(screen.getByText(/Some prices are unavailable/)).toBeInTheDocument(),
     );
   });
+
+  it('Today stat is the PnL delta between the last two series points, not the value delta', async () => {
+    // Yesterday: value 10000, cost  9000  → PnL 1000.
+    // Today:     value 11000, cost 10000  → PnL 1000.
+    // Raw value delta is +1000 (capital deployed), but PnL is unchanged
+    // → the Today stat must read $0.00, not +$1,000.00.
+    api.performance.mockResolvedValueOnce({
+      ...PERF,
+      series: [
+        { at: '2026-04-01', value: 10000, cost:  9000 },
+        { at: '2026-04-02', value: 11000, cost: 10000 },
+      ],
+    });
+    const { container } = render(<PerformancePage privacy={false} currency="USD" />);
+    await waitFor(() => expect(screen.getByText('Today')).toBeInTheDocument());
+    const todayStat = [...container.querySelectorAll('.stat')]
+      .find((n) => n.textContent.startsWith('Today'));
+    expect(todayStat).toBeDefined();
+    const todayValue = todayStat.querySelector('.stat-value');
+    expect(todayValue.textContent.trim()).toBe('$0.00');
+  });
 });
 
 describe('PerformancePage — timeframe + chart', () => {

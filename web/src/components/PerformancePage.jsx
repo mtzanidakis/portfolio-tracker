@@ -55,9 +55,12 @@ export function PerformancePage({ privacy, currency }) {
   const pctBase = last ? last.c : 0;
   const periodPct = pctBase > 0 ? (periodPnL / pctBase) * 100 : 0;
 
-  // Today's change: most recent series step (last.value − prev.value).
+  // Today's change is the *PnL* delta between the last two daily
+  // points — value − cost on each side, then differenced. Using a raw
+  // value delta would spike up/down whenever capital is deployed or
+  // withdrawn (deposits, buys, sells), which is not "today's gain".
   const prev = series.length >= 2 ? series[series.length - 2] : null;
-  const dayChange = prev ? last.v - prev.v : 0;
+  const dayChange = prev ? (last.v - last.c) - (prev.v - prev.c) : 0;
   const dayPct = prev && prev.v > 0 ? (dayChange / prev.v) * 100 : 0;
 
   return (

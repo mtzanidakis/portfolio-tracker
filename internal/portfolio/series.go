@@ -78,16 +78,16 @@ func SeriesFromTransactions(
 
 		// Apply every tx that happened on or before this day, updating
 		// both qty and cost basis so the end-of-day snapshot is correct.
-		// Track which symbols transacted today so we can anchor their
-		// value to cost — the user paid tx.Price (not Yahoo's EOD
-		// close), so valuing them at the snapshot here would report a
-		// phantom PnL on day zero.
-		txToday := map[string]bool{}
+		// For txs that fall on `day` itself we also accumulate the qty
+		// and base-currency cost added today, so the valuation step can
+		// price pre-day holdings at market while keeping today's new
+		// purchases anchored to their tx.Price (no phantom day-zero PnL
+		// from snapshot-vs-tx drift).
+		qtyAddedToday := map[string]float64{}
+		costAddedToday := map[string]float64{}
 		for txIdx < len(sorted) && !truncateDay(sorted[txIdx].OccurredAt).After(day) {
 			tx := sorted[txIdx]
-			if truncateDay(tx.OccurredAt).Equal(day) {
-				txToday[tx.AssetSymbol] = true
-			}
+			isToday := truncateDay(tx.OccurredAt).Equal(day)
 			h := state[tx.AssetSymbol]
 			if h == nil {
 				h = &holdingState{}
@@ -97,8 +97,13 @@ func SeriesFromTransactions(
 			case tx.Side.IncreasesQty():
 				// buy / deposit / interest
 				addNative := tx.Qty*tx.Price + tx.Fee
+				addBase := addNative * tx.FxToBase
 				h.qty += tx.Qty
-				h.costBase += addNative * tx.FxToBase
+				h.costBase += addBase
+				if isToday {
+					qtyAddedToday[tx.AssetSymbol] += tx.Qty
+					costAddedToday[tx.AssetSymbol] += addBase
+				}
 			case tx.Side == domain.SideSell || tx.Side == domain.SideWithdraw:
 				avg := 0.0
 				if h.qty > 0 {
@@ -122,17 +127,12 @@ func SeriesFromTransactions(
 			}
 			totalCost += h.costBase
 
-			// Any of the three conditions below (tx today, missing
-			// price, missing asset currency, missing FX) means we
-			// can't quote this holding at market — fall back to cost
-			// so the aggregate stays meaningful instead of leaving
-			// a zero-valued hole for this holding.
+			// Missing price / asset currency / FX rate means we can't
+			// quote this holding at market — fall back to costBase so
+			// the aggregate stays meaningful instead of leaving a
+			// zero-valued hole for this holding.
 			valueAtCost := func() { totalValue += h.costBase }
 
-			if txToday[sym] {
-				valueAtCost()
-				continue
-			}
 			price, ok := priceAt(sym, day)
 			if !ok {
 				valueAtCost()
@@ -152,7 +152,22 @@ func SeriesFromTransactions(
 				}
 				rate = srcUSD / baseUSD
 			}
-			totalValue += h.qty * price * rate
+
+			// Split valuation: pre-day qty at market, qty added today
+			// at its tx-time cost (already in base). If sells today
+			// went deeper than pre-day stock, marketQty clamps to 0
+			// and the surviving "today's adds" cost is scaled down
+			// proportionally.
+			addedQty := qtyAddedToday[sym]
+			addedCost := costAddedToday[sym]
+			marketQty := h.qty - addedQty
+			if marketQty < 0 {
+				if addedQty > 0 {
+					addedCost *= h.qty / addedQty
+				}
+				marketQty = 0
+			}
+			totalValue += marketQty*price*rate + addedCost
 		}
 		out = append(out, SeriesPoint{At: day, Value: totalValue, Cost: totalCost})
 	}
