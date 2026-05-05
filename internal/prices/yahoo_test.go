@@ -6,7 +6,17 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
 )
+
+func aaplRefs(symbols ...string) []AssetFetchRef {
+	out := make([]AssetFetchRef, len(symbols))
+	for i, s := range symbols {
+		out[i] = AssetFetchRef{ID: s, Currency: domain.USD}
+	}
+	return out
+}
 
 // fakeYahoo stitches together the cookie + crumb + quote flow in a
 // single test server. It enforces that:
@@ -70,7 +80,7 @@ func TestYahoo_Fetch_CookieCrumbFlow(t *testing.T) {
 	p, srv := newFakeYahoo(t, f)
 	defer srv.Close()
 
-	out, err := p.Fetch(t.Context(), []string{"AAPL", "NVDA"})
+	out, err := p.Fetch(t.Context(), aaplRefs("AAPL", "NVDA"))
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -79,7 +89,7 @@ func TestYahoo_Fetch_CookieCrumbFlow(t *testing.T) {
 	}
 
 	// Second call reuses the crumb; no new cookie/crumb hits.
-	if _, err := p.Fetch(t.Context(), []string{"AAPL"}); err != nil {
+	if _, err := p.Fetch(t.Context(), aaplRefs("AAPL")); err != nil {
 		t.Fatalf("fetch 2: %v", err)
 	}
 	if f.hits.cookie != 1 || f.hits.crumb != 1 {
@@ -98,7 +108,7 @@ func TestYahoo_Fetch_RetriesOn401(t *testing.T) {
 	// Simulate a stale cached crumb from a previous session.
 	p.crumb = "stale"
 
-	if _, err := p.Fetch(t.Context(), []string{"AAPL"}); err != nil {
+	if _, err := p.Fetch(t.Context(), aaplRefs("AAPL")); err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
 	if p.crumb != f.crumb {
@@ -133,7 +143,7 @@ func TestYahoo_UserAgentSet(t *testing.T) {
 	p := NewYahoo(nil)
 	p.BaseURL = srv.URL
 	p.CookieURL = srv.URL + "/cookie"
-	_, _ = p.Fetch(t.Context(), []string{"AAPL"}) // will error at crumb step; we only check UA
+	_, _ = p.Fetch(t.Context(), aaplRefs("AAPL")) // will error at crumb step; we only check UA
 	if !strings.Contains(seenUA, "Mozilla") {
 		t.Errorf("expected browser UA, got %q", seenUA)
 	}

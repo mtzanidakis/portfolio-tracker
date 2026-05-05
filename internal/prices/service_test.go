@@ -16,13 +16,13 @@ type fakePriceProvider struct {
 	name   string
 	quotes []PriceQuote
 	err    error
-	seen   []string
+	seen   []AssetFetchRef
 }
 
 func (f *fakePriceProvider) Name() string { return f.name }
 
-func (f *fakePriceProvider) Fetch(_ context.Context, ids []string) ([]PriceQuote, error) {
-	f.seen = append(f.seen, ids...)
+func (f *fakePriceProvider) Fetch(_ context.Context, refs []AssetFetchRef) ([]PriceQuote, error) {
+	f.seen = append(f.seen, refs...)
 	return f.quotes, f.err
 }
 
@@ -105,10 +105,10 @@ func TestService_RefreshAll_Persists(t *testing.T) {
 		t.Errorf("EUR not persisted: %+v, err=%v", eur, err)
 	}
 
-	if len(yahoo.seen) != 1 || yahoo.seen[0] != "AAPL" {
+	if len(yahoo.seen) != 1 || yahoo.seen[0].ID != "AAPL" {
 		t.Errorf("yahoo saw: %v", yahoo.seen)
 	}
-	if len(cg.seen) != 1 || cg.seen[0] != "bitcoin" {
+	if len(cg.seen) != 1 || cg.seen[0].ID != "bitcoin" || cg.seen[0].Currency != domain.USD {
 		t.Errorf("coingecko saw: %v", cg.seen)
 	}
 }

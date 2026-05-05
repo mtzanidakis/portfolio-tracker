@@ -42,17 +42,50 @@ func NewCoinGecko(httpClient *http.Client, apiKey string) *CoinGeckoProvider {
 // Name returns "coingecko".
 func (c *CoinGeckoProvider) Name() string { return "coingecko" }
 
-// Fetch queries /simple/price?ids=<ids>&vs_currencies=usd. External IDs are
-// CoinGecko coin IDs (e.g., "bitcoin", "ethereum"). Prices are returned in
-// USD.
-func (c *CoinGeckoProvider) Fetch(ctx context.Context, ids []string) ([]PriceQuote, error) {
-	if len(ids) == 0 {
+// Fetch queries /simple/price?ids=<ids>&vs_currencies=<cur>. External
+// IDs are CoinGecko coin IDs (e.g., "bitcoin", "ethereum"). Refs are
+// grouped by currency and one HTTP call is issued per group, so an
+// asset configured with native currency EUR is priced directly in EUR
+// (no FX hop through USD). The returned PriceQuote.Currency echoes the
+// requested currency.
+func (c *CoinGeckoProvider) Fetch(ctx context.Context, refs []AssetFetchRef) ([]PriceQuote, error) {
+	if len(refs) == 0 {
 		return nil, nil
 	}
-	u := c.BaseURL + "/simple/price?" + url.Values{
-		"ids":           {strings.Join(ids, ",")},
-		"vs_currencies": {"usd"},
-	}.Encode()
+	byCur := map[domain.Currency][]string{}
+	for _, r := range refs {
+		byCur[r.Currency] = append(byCur[r.Currency], r.ID)
+	}
+	now := time.Now().UTC()
+	out := make([]PriceQuote, 0, len(refs))
+	for cur, ids := range byCur {
+		vs := strings.ToLower(string(cur))
+		u := c.BaseURL + "/simple/price?" + url.Values{
+			"ids":           {strings.Join(ids, ",")},
+			"vs_currencies": {vs},
+		}.Encode()
+		parsed, err := c.getSimplePrice(ctx, u)
+		if err != nil {
+			return nil, err
+		}
+		// Response shape: {"bitcoin":{"eur":69000.12}, …}
+		for id, prices := range parsed {
+			p, ok := prices[vs]
+			if !ok {
+				continue
+			}
+			out = append(out, PriceQuote{
+				Symbol:    id,
+				Price:     p,
+				Currency:  cur,
+				FetchedAt: now,
+			})
+		}
+	}
+	return out, nil
+}
+
+func (c *CoinGeckoProvider) getSimplePrice(ctx context.Context, u string) (map[string]map[string]float64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
@@ -70,31 +103,15 @@ func (c *CoinGeckoProvider) Fetch(ctx context.Context, ids []string) ([]PriceQuo
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return nil, fmt.Errorf("coingecko: status %d: %s", resp.StatusCode, body)
 	}
-
-	// Response shape: {"bitcoin":{"usd":67200.12},"ethereum":{"usd":3420.4}}
 	var parsed map[string]map[string]float64
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return nil, fmt.Errorf("coingecko decode: %w", err)
 	}
-	now := time.Now().UTC()
-	out := make([]PriceQuote, 0, len(parsed))
-	for id, prices := range parsed {
-		p, ok := prices["usd"]
-		if !ok {
-			continue
-		}
-		out = append(out, PriceQuote{
-			Symbol:    id,
-			Price:     p,
-			Currency:  domain.USD,
-			FetchedAt: now,
-		})
-	}
-	return out, nil
+	return parsed, nil
 }
 
 type coingeckoChart struct {
-	Prices [][]float64 `json:"prices"` // pairs of [ms_epoch, price_usd]
+	Prices [][]float64 `json:"prices"` // pairs of [ms_epoch, price]
 }
 
 type coingeckoSearchResponse struct {
@@ -169,15 +186,16 @@ func (c *CoinGeckoProvider) LookupSymbol(ctx context.Context, symbol string) (*S
 	return best, nil
 }
 
-// FetchHistory pulls daily USD closes for the given CoinGecko coin id
-// via /coins/{id}/market_chart. `days` is derived from `from`: the
-// CoinGecko endpoint auto-selects daily granularity when days > 90,
-// hourly/5-min for shorter ranges. Zero from defaults to 365 days.
-// Callers hand in a coin id (not a ticker); see LookupSymbol for the
-// ticker-to-id mapping.
-func (c *CoinGeckoProvider) FetchHistory(ctx context.Context, id string, from time.Time) ([]HistoricalSnapshot, error) {
-	u := c.BaseURL + "/coins/" + url.PathEscape(id) + "/market_chart?" + url.Values{
-		"vs_currency": {"usd"},
+// FetchHistory pulls daily closes for the given CoinGecko coin id via
+// /coins/{id}/market_chart, denominated in ref.Currency (the asset's
+// native currency). `days` is derived from `from`: the CoinGecko
+// endpoint auto-selects daily granularity when days > 90, hourly/5-min
+// for shorter ranges. Zero from defaults to 365 days. Callers hand in a
+// coin id (not a ticker); see LookupSymbol for the ticker-to-id mapping.
+func (c *CoinGeckoProvider) FetchHistory(ctx context.Context, ref AssetFetchRef, from time.Time) ([]HistoricalSnapshot, error) {
+	vs := strings.ToLower(string(ref.Currency))
+	u := c.BaseURL + "/coins/" + url.PathEscape(ref.ID) + "/market_chart?" + url.Values{
+		"vs_currency": {vs},
 		"days":        {coingeckoDaysFor(from)},
 		"interval":    {"daily"},
 	}.Encode()
@@ -208,10 +226,10 @@ func (c *CoinGeckoProvider) FetchHistory(ctx context.Context, id string, from ti
 			continue
 		}
 		out = append(out, HistoricalSnapshot{
-			Symbol:   id,
+			Symbol:   ref.ID,
 			At:       time.UnixMilli(int64(pair[0])).UTC(),
 			Price:    pair[1],
-			Currency: domain.USD,
+			Currency: ref.Currency,
 		})
 	}
 	return out, nil

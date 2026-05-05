@@ -24,12 +24,21 @@ type PriceQuote struct {
 	FetchedAt time.Time
 }
 
+// AssetFetchRef identifies one instrument to quote. Currency is the
+// asset's native currency: CoinGecko honours it via vs_currency so the
+// coin is priced in that fiat directly; Yahoo ignores it (prices are
+// always in the instrument's trading currency).
+type AssetFetchRef struct {
+	ID       string
+	Currency domain.Currency
+}
+
 // PriceProvider fetches the current price of one or more instruments.
 type PriceProvider interface {
 	// Name identifies the provider (matches assets.provider in DB).
 	Name() string
-	// Fetch returns quotes for the given external IDs.
-	Fetch(ctx context.Context, externalIDs []string) ([]PriceQuote, error)
+	// Fetch returns quotes for the given asset refs.
+	Fetch(ctx context.Context, refs []AssetFetchRef) ([]PriceQuote, error)
 }
 
 // FxProvider fetches FX rates expressed as "1 currency = rate USD".
@@ -56,8 +65,8 @@ type HistoricalSnapshot struct {
 	Currency domain.Currency
 }
 
-// HistoryProvider can fetch daily price history for a single external
-// identifier (ticker / coin id). Implemented by Yahoo + CoinGecko.
+// HistoryProvider can fetch daily price history for a single asset.
+// Implemented by Yahoo + CoinGecko.
 //
 // `from` is the earliest date the caller wants covered. Providers may
 // return more than that (rounded up to their supported range step —
@@ -65,7 +74,7 @@ type HistoricalSnapshot struct {
 // what exists when the instrument hasn't traded that far back. Zero
 // `from` means "provider default", typically ~1 year.
 type HistoryProvider interface {
-	FetchHistory(ctx context.Context, externalID string, from time.Time) ([]HistoricalSnapshot, error)
+	FetchHistory(ctx context.Context, ref AssetFetchRef, from time.Time) ([]HistoricalSnapshot, error)
 }
 
 // HistoricalFxRate is a dated FX quote expressed as "1 Currency = X USD".

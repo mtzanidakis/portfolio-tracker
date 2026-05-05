@@ -100,16 +100,18 @@ type yahooChartResponse struct {
 	} `json:"chart"`
 }
 
-// FetchHistory pulls daily closes for symbol via the chart endpoint.
+// FetchHistory pulls daily closes for the asset via the chart endpoint.
 // The range parameter is picked as the smallest supported window
 // covering `from` (1y / 2y / 5y / 10y / max). A zero `from` defaults
-// to 1y. Returns snapshots in the asset's native currency.
-func (y *YahooProvider) FetchHistory(ctx context.Context, symbol string, from time.Time) ([]HistoricalSnapshot, error) {
+// to 1y. Returns snapshots in the asset's native currency. ref.Currency
+// is unused — Yahoo's chart endpoint returns the instrument's own
+// trading currency.
+func (y *YahooProvider) FetchHistory(ctx context.Context, ref AssetFetchRef, from time.Time) ([]HistoricalSnapshot, error) {
 	params := url.Values{
 		"range":    {yahooRangeFor(from)},
 		"interval": {"1d"},
 	}
-	body, err := y.authedGet(ctx, "/v8/finance/chart/"+url.PathEscape(symbol), params)
+	body, err := y.authedGet(ctx, "/v8/finance/chart/"+url.PathEscape(ref.ID), params)
 	if err != nil {
 		return nil, err
 	}
@@ -154,10 +156,16 @@ type yahooQuoteResponse struct {
 
 // Fetch queries /v7/finance/quote?symbols=... in one request. The
 // crumb is added automatically; on 401/403 the crumb is refreshed and
-// the request is retried once.
-func (y *YahooProvider) Fetch(ctx context.Context, symbols []string) ([]PriceQuote, error) {
-	if len(symbols) == 0 {
+// the request is retried once. The Currency field on each ref is
+// ignored — Yahoo prices are always in the instrument's own trading
+// currency.
+func (y *YahooProvider) Fetch(ctx context.Context, refs []AssetFetchRef) ([]PriceQuote, error) {
+	if len(refs) == 0 {
 		return nil, nil
+	}
+	symbols := make([]string, len(refs))
+	for i, r := range refs {
+		symbols[i] = r.ID
 	}
 	params := url.Values{"symbols": {strings.Join(symbols, ",")}}
 	body, err := y.authedGet(ctx, "/v7/finance/quote", params)

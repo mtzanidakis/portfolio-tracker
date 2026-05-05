@@ -124,7 +124,7 @@ func (s *Service) refreshPriceHistory(ctx context.Context) error {
 			id = a.Symbol
 		}
 		from := historyFrom(ctx, s.DB, a.Symbol)
-		snapshots, err := provider.FetchHistory(ctx, id, from)
+		snapshots, err := provider.FetchHistory(ctx, AssetFetchRef{ID: id, Currency: a.Currency}, from)
 		if err != nil {
 			s.Logger.Warn("history fetch failed",
 				"symbol", a.Symbol, "from", from.Format("2006-01-02"), "err", err)
@@ -238,6 +238,7 @@ func fxBackfillFrom(ctx context.Context, d *db.DB, now time.Time) time.Time {
 type assetRef struct {
 	symbol     string
 	providerID string
+	currency   domain.Currency
 }
 
 // refreshPrices fetches latest quotes per provider and writes both the
@@ -261,7 +262,7 @@ func (s *Service) refreshPrices(ctx context.Context) int {
 			id = a.Symbol
 		}
 		byProvider[a.Provider] = append(byProvider[a.Provider], assetRef{
-			symbol: a.Symbol, providerID: id,
+			symbol: a.Symbol, providerID: id, currency: a.Currency,
 		})
 	}
 
@@ -272,11 +273,11 @@ func (s *Service) refreshPrices(ctx context.Context) int {
 			s.Logger.Warn("unknown provider", "name", name)
 			continue
 		}
-		ids := make([]string, len(refs))
+		fetchRefs := make([]AssetFetchRef, len(refs))
 		for i, r := range refs {
-			ids[i] = r.providerID
+			fetchRefs[i] = AssetFetchRef{ID: r.providerID, Currency: r.currency}
 		}
-		quotes, err := prov.Fetch(ctx, ids)
+		quotes, err := prov.Fetch(ctx, fetchRefs)
 		if err != nil {
 			s.Logger.Warn("provider fetch failed", "name", name, "err", err)
 			continue
