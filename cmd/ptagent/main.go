@@ -35,6 +35,10 @@ Read commands:
   refresh-prices
   export          [--format json|csv] [--out FILE]
 
+Other:
+  version
+  upgrade         [--check] [--version vX.Y.Z] [--yes]
+
 Write commands (require --yes):
   add-tx --account-id ID --symbol SYM --side buy|sell --qty N --price N
          [--fee N] [--fx N] [--date YYYY-MM-DD] [--note TXT] --yes
@@ -72,6 +76,8 @@ func run() int {
 	case "version":
 		fmt.Println("ptagent", version.Version)
 		return 0
+	case "upgrade":
+		return cmdUpgrade(os.Args[2:])
 	case "-h", "--help":
 		fmt.Print(usageText)
 		return 0
