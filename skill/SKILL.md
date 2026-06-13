@@ -51,6 +51,17 @@ ptagent export --format csv --out txs.csv
 
 Add `--json` for raw JSON output (good for further processing). Note that `refresh-prices` posts to the server but does not mutate user data — it only refreshes the global price cache, so it is safe to run without `--yes`.
 
+## Self-maintenance
+
+```bash
+ptagent version                       # print the installed version
+ptagent upgrade --check               # show current + latest release tag, no download
+ptagent upgrade --yes                 # replace the running binary with the latest release
+ptagent upgrade --version v0.2.7 --yes  # pin to a specific release
+```
+
+`upgrade` downloads the matching asset from GitHub Releases, verifies its SHA-256 against the release's `checksums.txt`, and renames it in place over `os.Executable()`. Refuses on Windows (grab the archive from the releases page) and on `dev` builds. If the binary lives in a root-owned path (e.g. `/usr/local/bin`), re-run under `sudo`.
+
 ## Write commands (REQUIRE `--yes`)
 
 Never run a write command without `--yes`. The CLI refuses without it; do not add `--yes` unless the user has explicitly confirmed the specific mutation.
