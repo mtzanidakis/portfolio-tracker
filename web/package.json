@@ -25,6 +25,6 @@
     "@vitest/coverage-v8": "^4.1.9",
     "esbuild": "^0.28.1",
     "happy-dom": "^20.10.6",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.10"
   }
 }
