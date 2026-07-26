@@ -41,11 +41,11 @@ lint:
 		golangci-lint run ./...
 
 lint-web:
-	docker run --rm -v $(PWD)/web:/web -w /web node:24-alpine \
+	docker run --rm -v $(PWD)/web:/web -w /web node:26-alpine \
 		sh -c "npm ci --silent && echo 'no lint script configured yet'"
 
 test-web:
-	docker run --rm -v $(PWD)/web:/web -w /web node:24-alpine \
+	docker run --rm -v $(PWD)/web:/web -w /web node:26-alpine \
 		sh -c "npm ci --silent && npm test --silent"
 
 # --- local ptagent build for development (standalone; normally via goreleaser) ---
