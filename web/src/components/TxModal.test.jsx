@@ -46,6 +46,18 @@ function fieldByLabel(container, labelText) {
   return null;
 }
 
+// The FX field's label wraps the "auto" checkbox, so it is the first
+// input in the .field — reach past it for the rate box itself.
+function fxRateInput(container) {
+  for (const f of container.querySelectorAll('.field')) {
+    const label = f.querySelector('label');
+    if (label && label.textContent.includes('FX rate')) {
+      return f.querySelector('input[type="number"]');
+    }
+  }
+  return null;
+}
+
 async function untilLoaded(container) {
   // Wait until both dropdowns have options. Reading `select.value` is
   // unreliable in happy-dom for controlled <select value={...}> when the
@@ -103,32 +115,99 @@ describe('TxModal — load + side adapt', () => {
 });
 
 describe('TxModal — FX behaviour', () => {
-  it('does not fetch FX when account currency matches base', async () => {
+  it('does not fetch FX when the asset currency matches base', async () => {
     const user = userEvent.setup();
     const { container } = render(
       <TxModal user={USER_EUR_BASE} onClose={vi.fn()} onSaved={vi.fn()} />,
     );
     await untilLoaded(container);
-    // The default USD account triggered one initial fetch; clear so we
-    // can assert that switching to EUR does not trigger another.
+    // The default asset (AAPL, USD) triggered one initial fetch; clear
+    // so we can assert that switching to a EUR asset triggers no more.
     await waitFor(() => expect(api.fxRate).toHaveBeenCalled());
     api.fxRate.mockClear();
 
-    await user.selectOptions(fieldByLabel(container, 'Account'), '2'); // EUR
+    await user.selectOptions(fieldByLabel(container, 'Asset'), 'CASH-EUR');
     await waitFor(() => expect(fieldByLabel(container, 'FX rate')).toBeNull());
     expect(api.fxRate).not.toHaveBeenCalled();
   });
 
-  it('fetches FX when account currency differs from base', async () => {
+  it('fetches FX when the asset currency differs from base', async () => {
     const { container } = render(
       <TxModal user={USER_EUR_BASE} onClose={vi.fn()} onSaved={vi.fn()} />,
     );
     await untilLoaded(container);
-    // Default account is USD; base is EUR → needsFx is true.
+    // Default asset is AAPL (USD); base is EUR → needsFx is true.
     await waitFor(() => expect(api.fxRate).toHaveBeenCalled());
     const [from, to] = api.fxRate.mock.calls[0];
     expect(from).toBe('USD');
     expect(to).toBe('EUR');
+  });
+
+  // The regression this whole path exists for: a USD instrument held in
+  // an account labelled EUR still has to be converted. Anchoring on the
+  // account's currency silently recorded fx_to_base=1 and inflated the
+  // cost basis by the whole USD/EUR spread.
+  it('anchors FX to the asset currency, not the account currency', async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <TxModal user={USER_EUR_BASE} onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    await untilLoaded(container);
+    await waitFor(() => expect(api.fxRate).toHaveBeenCalled());
+    api.fxRate.mockClear();
+
+    // EUR account, but AAPL still trades in USD.
+    await user.selectOptions(fieldByLabel(container, 'Account'), '2');
+    await waitFor(() => expect(fieldByLabel(container, 'FX rate')).not.toBeNull());
+    expect(fieldByLabel(container, 'FX rate')).not.toBeNull();
+    if (api.fxRate.mock.calls.length) {
+      const [from, to] = api.fxRate.mock.calls[0];
+      expect(from).toBe('USD');
+      expect(to).toBe('EUR');
+    }
+  });
+
+  it('blocks submit and explains when the rate cannot be fetched', async () => {
+    const user = userEvent.setup();
+    api.fxRate.mockRejectedValue(new Error('bad gateway'));
+    const { container } = render(
+      <TxModal user={USER_EUR_BASE} onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    await untilLoaded(container);
+    await waitFor(() => expect(api.fxRate).toHaveBeenCalled());
+
+    await user.type(fieldByLabel(container, 'Quantity'), '5');
+    await user.type(fieldByLabel(container, 'Price per unit'), '198');
+
+    await waitFor(() =>
+      expect(screen.getByText(/could not fetch the usd→eur rate/i)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /record buy/i })).toBeDisabled();
+    expect(api.createTx).not.toHaveBeenCalled();
+  });
+
+  it('submits a manually entered rate after an auto-fetch failure', async () => {
+    const user = userEvent.setup();
+    api.fxRate.mockRejectedValue(new Error('bad gateway'));
+    const { container } = render(
+      <TxModal user={USER_EUR_BASE} onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    await untilLoaded(container);
+    await waitFor(() => expect(api.fxRate).toHaveBeenCalled());
+
+    await user.type(fieldByLabel(container, 'Quantity'), '5');
+    await user.type(fieldByLabel(container, 'Price per unit'), '198');
+
+    // Set the rate in one shot — typing "0.877" character by character
+    // through a type="number" input loses the intermediate "0." state.
+    const fxField = fxRateInput(container);
+    fxField.value = '0.877';
+    fireEvent.input(fxField);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /record buy/i })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: /record buy/i }));
+    await waitFor(() => expect(api.createTx).toHaveBeenCalledOnce());
+    expect(api.createTx.mock.calls[0][0].fx_to_base).toBe(0.877);
   });
 
   it('the auto checkbox starts on for new transactions and toggles off on click', async () => {
@@ -178,10 +257,13 @@ describe('TxModal — submit', () => {
       qty: 5,
       price: 198,
       fee: 1,
-      fx_to_base: 0.92,
       note: '',
     });
     expect(payload.occurred_at).toBe('2026-04-01T12:00:00.000Z');
+    // On auto the rate is deliberately omitted — the server resolves it
+    // from the asset currency and trade date, so there is exactly one
+    // authority and no chance of shipping a stale or guessed value.
+    expect(payload).not.toHaveProperty('fx_to_base');
 
     expect(onSaved).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();

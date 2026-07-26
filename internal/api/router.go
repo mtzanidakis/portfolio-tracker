@@ -106,10 +106,10 @@ func NewRouter(d *db.DB, sessionLifetime time.Duration, secret []byte, opts ...O
 	mux.Handle("DELETE /api/v1/assets/{symbol}", protect(deleteAssetHandler(d)))
 
 	mux.Handle("GET /api/v1/transactions", protect(listTransactionsHandler(d)))
-	mux.Handle("POST /api/v1/transactions", protect(createTransactionHandler(d)))
+	mux.Handle("POST /api/v1/transactions", protect(createTransactionHandler(d, cfg.fxHistory)))
 	mux.Handle("GET /api/v1/transactions/summary", protect(transactionSummaryHandler(d)))
 	mux.Handle("GET /api/v1/transactions/{id}", protect(getTransactionHandler(d)))
-	mux.Handle("PATCH /api/v1/transactions/{id}", protect(updateTransactionHandler(d)))
+	mux.Handle("PATCH /api/v1/transactions/{id}", protect(updateTransactionHandler(d, cfg.fxHistory)))
 	mux.Handle("DELETE /api/v1/transactions/{id}", protect(deleteTransactionHandler(d)))
 
 	mux.Handle("GET /api/v1/holdings", protect(holdingsHandler(d)))

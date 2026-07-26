@@ -30,7 +30,7 @@ type testEnv struct {
 	token string
 }
 
-func setup(t *testing.T) *testEnv {
+func setup(t *testing.T, opts ...Option) *testEnv {
 	t.Helper()
 	d, err := db.Open(t.Context(), filepath.Join(t.TempDir(), "api.db"))
 	if err != nil {
@@ -55,9 +55,17 @@ func setup(t *testing.T) *testEnv {
 		t.Fatalf("create token: %v", err)
 	}
 
-	srv := httptest.NewServer(NewRouter(d, time.Hour, testSecret))
+	srv := httptest.NewServer(NewRouter(d, time.Hour, testSecret, opts...))
 	t.Cleanup(srv.Close)
 	return &testEnv{t: t, db: d, srv: srv, user: u, token: plain}
+}
+
+// setupWithFx is setup with a stubbed FX provider — mandatory for any
+// test that writes a transaction, since the server now resolves the
+// rate itself and would otherwise reach for the network.
+func setupWithFx(t *testing.T, fx *stubFx) *testEnv {
+	t.Helper()
+	return setup(t, WithFxHistory(fx))
 }
 
 func (e *testEnv) do(method, path string, body any) *http.Response {

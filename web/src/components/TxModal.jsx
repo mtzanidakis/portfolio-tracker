@@ -63,11 +63,15 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
     if (parsed) setDate(dateToIso(parsed));
   };
   const [accountId, setAccountId] = useState(transaction?.account_id || 0);
+  // Empty until a rate is actually known — a new transaction has no
+  // rate to show yet, and seeding it with '1' is exactly the guess that
+  // must never reach the server.
   const [fxToBase, setFxToBase] = useState(
-    transaction ? String(transaction.fx_to_base || 1) : '1',
+    transaction ? String(transaction.fx_to_base || 1) : '',
   );
   const [fxAuto, setFxAuto] = useState(!editing); // default to auto for new tx
   const [fxLoading, setFxLoading] = useState(false);
+  const [fxError, setFxError] = useState('');
   const [note, setNote] = useState(transaction?.note || '');
   const [assets, setAssets] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -87,11 +91,17 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
   const account = accounts.find(a => a.id === accountId);
   const accountCurrency = account?.currency || 'USD';
   const baseCurrency = user?.base_currency || 'USD';
-  const needsFx = accountCurrency !== baseCurrency;
 
   const selectedAsset = assets.find(a => a.symbol === sym);
   const isCash = selectedAsset?.type === 'cash';
   const sideOptions = isCash ? CASH_SIDES : ASSET_SIDES;
+
+  // FX is anchored to the *asset's* currency, not the account's. Price
+  // is quoted in whatever the instrument trades in, and valuation
+  // converts from the asset currency too — an account label like
+  // "Revolut Stocks USD" carries no guarantee about either.
+  const assetCurrency = selectedAsset?.currency || accountCurrency;
+  const needsFx = !!selectedAsset && assetCurrency !== baseCurrency;
 
   // Keep the side in sync with the selected asset's type so we don't
   // submit buy-on-cash or deposit-on-stock. When the set of valid sides
@@ -127,10 +137,13 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
     }
   }, [accountId, accounts, assets, editing]);
 
-  // Auto-calculate fx_to_base whenever account / base / date changes.
+  // Auto-calculate fx_to_base whenever asset / base / date changes.
   // Skipped when not needed (same currency) or when the user has
-  // toggled auto off.
+  // toggled auto off. A failure is surfaced and blocks submit — the
+  // rate is never quietly left at whatever was in the box, because a
+  // wrong lock silently corrupts the position's cost basis forever.
   useEffect(() => {
+    setFxError('');
     if (!needsFx) {
       setFxToBase('1');
       return;
@@ -138,22 +151,31 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
     if (!fxAuto) return;
     let cancelled = false;
     setFxLoading(true);
-    api.fxRate(accountCurrency, baseCurrency, date)
+    api.fxRate(assetCurrency, baseCurrency, date)
       .then(r => { if (!cancelled) setFxToBase(String(r.rate)); })
-      .catch(() => { /* keep current value on failure */ })
+      .catch(e => {
+        if (!cancelled) {
+          setFxToBase('');
+          setFxError(`Could not fetch the ${assetCurrency}→${baseCurrency} rate for ${date}: ${e.message}. Enter it manually to continue.`);
+        }
+      })
       .finally(() => { if (!cancelled) setFxLoading(false); });
     return () => { cancelled = true; };
-  }, [accountCurrency, baseCurrency, date, needsFx, fxAuto]);
+  }, [assetCurrency, baseCurrency, date, needsFx, fxAuto]);
 
   const amountCurrency = isCash ? (selectedAsset?.currency || accountCurrency) : accountCurrency;
   const total = isCash
     ? (parseFloat(qty) || 0)
     : (parseFloat(qty) || 0) * (parseFloat(price) || 0);
 
+  // Anything that would make us submit a made-up FX rate.
+  const fxBlocked = needsFx && (fxLoading || !!fxError || !(parseFloat(fxToBase) > 0));
+
   const submit = async (e) => {
     e.preventDefault();
     if (!sym || !accountId || !qty) return;
     if (!isCash && !price) return;
+    if (fxBlocked) return;
     setSubmitting(true);
     setError('');
     try {
@@ -164,10 +186,15 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
         qty: parseFloat(qty),
         price: isCash ? 1 : parseFloat(price),
         fee: parseFloat(fee) || 0,
-        fx_to_base: needsFx ? (parseFloat(fxToBase) || 1) : 1,
         occurred_at: new Date(date + 'T12:00:00Z').toISOString(),
         note,
       };
+      // Only pin a rate when the user typed one. On auto we omit the
+      // field so the server resolves it from the asset currency and
+      // trade date — one authority, no client-side guessing.
+      if (!fxAuto || !needsFx) {
+        payload.fx_to_base = needsFx ? parseFloat(fxToBase) : 1;
+      }
       if (editing) {
         await api.updateTx(transaction.id, payload);
       } else {
@@ -284,7 +311,7 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
         {needsFx && (
           <div class="field">
             <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>FX rate (1 {accountCurrency} = ? {baseCurrency}, locked at trade time)</span>
+              <span>FX rate (1 {assetCurrency} = ? {baseCurrency}, locked at trade time)</span>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 {fxLoading && <span>fetching…</span>}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
@@ -297,7 +324,10 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
             </label>
             <input class="input mono" type="number" step="any" value={fxToBase}
               disabled={fxAuto && fxLoading}
-              onInput={e => { setFxToBase(e.currentTarget.value); setFxAuto(false); }} />
+              onInput={e => { setFxToBase(e.currentTarget.value); setFxAuto(false); setFxError(''); }} />
+            {fxError && (
+              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--neg)' }}>{fxError}</div>
+            )}
           </div>
         )}
 
@@ -333,7 +363,8 @@ export function TxModal({ transaction, user, onClose, onSaved }) {
         <div class="modal-actions">
           <button type="button" class="btn" onClick={onClose}>Cancel</button>
           <button type="submit" class="btn primary"
-            disabled={!qty || (!isCash && !price) || submitting}>
+            title={fxBlocked ? 'Waiting on a valid FX rate' : undefined}
+            disabled={!qty || (!isCash && !price) || submitting || fxBlocked}>
             <Icon name="check" />
             {submitting ? 'Saving…' : submitLabel}
           </button>

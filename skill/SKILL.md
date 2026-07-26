@@ -68,7 +68,7 @@ Never run a write command without `--yes`. The CLI refuses without it; do not ad
 
 ```bash
 ptagent add-tx --account-id 1 --symbol AAPL --side buy \
-  --qty 3 --price 198.20 --fx 0.92 --date 2026-04-18 --yes
+  --qty 3 --price 198.20 --date 2026-04-18 --yes
 
 ptagent add-account --name "Broker" --type Brokerage --short BR \
   --color "#c8502a" --currency USD --yes
@@ -94,6 +94,6 @@ pass `--note ""` explicitly.
 - Before `add-tx`: verify the asset exists (`ptagent assets --q <sym>`); if not, look it up with `ptagent asset-lookup --symbol <sym>` to grab the canonical name / native currency / provider-id, then `add-asset`. Transactions FK-reference the asset.
 - Before `add-tx`: get the account id via `ptagent accounts`.
 - Use `ptagent me` to confirm base currency and interpret monetary values.
-- Multi-currency: the asset's native currency may differ from the user's base. `add-tx --fx` is the FX rate from the asset's currency to the user's base at the trade time; it is locked per transaction so historical cost basis doesn't drift. Use `ptagent fx-rate --from <native> --to <base> --at <date>` to fetch the right rate before `add-tx`.
+- Multi-currency: the asset's native currency may differ from the user's base. **Omit `--fx` and let the server resolve it** from the asset's currency and the trade date — that is the correct behaviour in every normal case. The rate is locked per transaction so historical cost basis doesn't drift. Pass `--fx` only to pin a specific rate (e.g. reproducing a broker's own conversion); never pass a guessed value, and never pass `1` for a non-base-currency asset — it silently records the cost basis in the wrong currency for the life of the position. The account's currency is a label and is *not* what the rate is anchored to.
 - To fix a mistaken transaction, prefer `update-tx` over `delete-tx` + `add-tx` so the original id and creation timestamp survive.
 - On errors: the CLI prints "ptagent: <reason>". Common ones: `401` (bad token), `400` (validation — fix the flags), `404` (wrong id).

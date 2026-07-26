@@ -30,7 +30,7 @@ func cmdAddTx(cfg *config, args []string) int {
 		qty     = fs.Float64("qty", 0, "quantity (required)")
 		price   = fs.Float64("price", 0, "per-unit price (required)")
 		fee     = fs.Float64("fee", 0, "fee in asset currency")
-		fx      = fs.Float64("fx", 1.0, "fx rate asset→base at trade time")
+		fx      = fs.Float64("fx", 0, "fx rate asset→base at trade time (default: resolved by the server)")
 		date    = fs.String("date", time.Now().UTC().Format("2006-01-02"), "YYYY-MM-DD")
 		note    = fs.String("note", "", "free-text note")
 	)
@@ -48,9 +48,13 @@ func cmdAddTx(cfg *config, args []string) int {
 		"qty":          *qty,
 		"price":        *price,
 		"fee":          *fee,
-		"fx_to_base":   *fx,
 		"occurred_at":  *date + "T12:00:00Z",
 		"note":         *note,
+	}
+	// Omitted --fx means "server, look it up" — sending a made-up 1.0
+	// would lock a wrong cost basis for any non-base-currency asset.
+	if *fx > 0 {
+		body["fx_to_base"] = *fx
 	}
 	var out map[string]any
 	if err := apiPOST(cfg, "/api/v1/transactions", body, &out); err != nil {

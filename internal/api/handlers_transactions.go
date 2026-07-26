@@ -11,8 +11,15 @@ import (
 	"github.com/mtzanidakis/portfolio-tracker/internal/auth"
 	"github.com/mtzanidakis/portfolio-tracker/internal/db"
 	"github.com/mtzanidakis/portfolio-tracker/internal/domain"
+	"github.com/mtzanidakis/portfolio-tracker/internal/prices"
 )
 
+// txRequest is the create/update payload. FxToBase is a pointer so we
+// can tell "the client pinned a rate" apart from "the client left it
+// out" — omitted means the server resolves the rate itself from the
+// asset's currency and the transaction date. Clients must never guess:
+// a silently-defaulted 1.0 corrupts the base-currency cost basis for
+// the entire life of the position.
 type txRequest struct {
 	AccountID   int64     `json:"account_id"`
 	AssetSymbol string    `json:"asset_symbol"`
@@ -20,7 +27,7 @@ type txRequest struct {
 	Qty         float64   `json:"qty"`
 	Price       float64   `json:"price"`
 	Fee         float64   `json:"fee"`
-	FxToBase    float64   `json:"fx_to_base"`
+	FxToBase    *float64  `json:"fx_to_base"`
 	OccurredAt  time.Time `json:"occurred_at"`
 	Note        string    `json:"note"`
 }
@@ -145,7 +152,33 @@ func decodeTxCursor(s string) (sort string, sortVal string, id int64, err error)
 	return parts[0], parts[1], idV, nil
 }
 
-func createTransactionHandler(d *db.DB) http.HandlerFunc {
+// resolveFxToBase returns the rate locking `cur` to the user's base
+// currency at `at`. Same currency is trivially 1. Anything else goes to
+// the FX provider — and a provider failure is a hard error, because
+// falling back to 1 would silently record a wrong cost basis.
+func resolveFxToBase(
+	r *http.Request,
+	fx prices.FxHistoryProvider,
+	cur, base domain.Currency,
+	at time.Time,
+) (float64, error) {
+	if cur == base || cur == "" {
+		return 1, nil
+	}
+	if fx == nil {
+		return 0, fmt.Errorf("fx %s→%s: no rate provider configured", cur, base)
+	}
+	rate, err := fx.FetchRate(r.Context(), cur, base, at)
+	if err != nil {
+		return 0, fmt.Errorf("fx %s→%s on %s: %w", cur, base, at.UTC().Format("2006-01-02"), err)
+	}
+	if rate <= 0 {
+		return 0, fmt.Errorf("fx %s→%s on %s: provider returned %g", cur, base, at.UTC().Format("2006-01-02"), rate)
+	}
+	return rate, nil
+}
+
+func createTransactionHandler(d *db.DB, fx prices.FxHistoryProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFrom(r.Context())
 		var req txRequest
@@ -180,6 +213,22 @@ func createTransactionHandler(d *db.DB) http.HandlerFunc {
 		if domain.TxSide(req.Side).IsCash() {
 			price = 1
 		}
+		// The rate converts the *asset's* native currency to base — the
+		// account's currency is a label and may differ from what the
+		// instrument actually trades in. Valuation (portfolio.ValueHoldings)
+		// prices holdings off the asset currency, so the cost basis has to
+		// be locked against the same one.
+		var fxToBase float64
+		if req.FxToBase != nil {
+			fxToBase = *req.FxToBase
+		} else {
+			rate, ferr := resolveFxToBase(r, fx, asset.Currency, u.BaseCurrency, req.OccurredAt)
+			if ferr != nil {
+				writeError(w, http.StatusBadGateway, ferr.Error())
+				return
+			}
+			fxToBase = rate
+		}
 		tx := &domain.Transaction{
 			UserID:      u.ID,
 			AccountID:   req.AccountID,
@@ -188,7 +237,7 @@ func createTransactionHandler(d *db.DB) http.HandlerFunc {
 			Qty:         req.Qty,
 			Price:       price,
 			Fee:         req.Fee,
-			FxToBase:    req.FxToBase,
+			FxToBase:    fxToBase,
 			OccurredAt:  req.OccurredAt,
 			Note:        req.Note,
 		}
@@ -229,7 +278,7 @@ func getTransactionHandler(d *db.DB) http.HandlerFunc {
 	}
 }
 
-func updateTransactionHandler(d *db.DB) http.HandlerFunc {
+func updateTransactionHandler(d *db.DB, fx prices.FxHistoryProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFrom(r.Context())
 		tx, err := loadOwnedTx(r, d, u.ID)
@@ -260,8 +309,14 @@ func updateTransactionHandler(d *db.DB) http.HandlerFunc {
 		if req.Fee > 0 {
 			tx.Fee = req.Fee
 		}
-		if req.FxToBase > 0 {
-			tx.FxToBase = req.FxToBase
+		movedAsset := req.AssetSymbol != "" && req.AssetSymbol != tx.AssetSymbol
+		movedDate := !req.OccurredAt.IsZero() && !req.OccurredAt.Equal(tx.OccurredAt)
+		if req.FxToBase != nil {
+			if *req.FxToBase <= 0 {
+				writeError(w, http.StatusBadRequest, "fx_to_base must be positive")
+				return
+			}
+			tx.FxToBase = *req.FxToBase
 		}
 		if !req.OccurredAt.IsZero() {
 			tx.OccurredAt = req.OccurredAt
@@ -277,6 +332,17 @@ func updateTransactionHandler(d *db.DB) http.HandlerFunc {
 		if err := validateSideVsAsset(tx.Side, asset.Type); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
+		}
+		// Moving a transaction to a different asset or date invalidates
+		// the locked rate. Re-resolve unless the caller pinned one in the
+		// same request.
+		if req.FxToBase == nil && (movedAsset || movedDate) {
+			rate, ferr := resolveFxToBase(r, fx, asset.Currency, u.BaseCurrency, tx.OccurredAt)
+			if ferr != nil {
+				writeError(w, http.StatusBadGateway, ferr.Error())
+				return
+			}
+			tx.FxToBase = rate
 		}
 		if tx.Side.IsCash() {
 			tx.Price = 1
@@ -317,7 +383,7 @@ func validateTx(req txRequest) error {
 		return errBadReq("qty must be positive")
 	case req.Price < 0:
 		return errBadReq("price must be non-negative")
-	case req.FxToBase <= 0:
+	case req.FxToBase != nil && *req.FxToBase <= 0:
 		return errBadReq("fx_to_base must be positive")
 	case req.OccurredAt.IsZero():
 		return errBadReq("occurred_at is required")
