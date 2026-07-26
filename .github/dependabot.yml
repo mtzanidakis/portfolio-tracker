@@ -9,6 +9,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Node stays on 24 deliberately. Without this, dependabot reopens
+      # the major bump every week. Remove the entry to move up again.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
