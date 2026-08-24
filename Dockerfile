@@ -9,7 +9,7 @@ COPY web/ ./
 RUN npm run build
 
 # --- go build stage ---
-FROM golang:1.26.5-alpine AS build
+FROM golang:1.27.0-alpine AS build
 ARG VERSION=docker
 WORKDIR /src
 
