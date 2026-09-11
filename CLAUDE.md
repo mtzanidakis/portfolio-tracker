@@ -4,7 +4,7 @@ Self-hosted stocks / ETF / crypto portfolio tracker. Multi-user, token auth, PWA
 
 ## Stack
 
-- **Backend**: Go 1.26.2, stdlib-first, pure-Go SQLite (`modernc.org/sqlite`), `CGO_ENABLED=0` everywhere.
+- **Backend**: Go 1.27.1, stdlib-first, pure-Go SQLite (`modernc.org/sqlite`), `CGO_ENABLED=0` everywhere.
 - **Frontend**: Preact + esbuild, JSX pre-transpiled at build time, bundled into `internal/web/dist/` by the Dockerfile web stage and embedded via `go:embed`. No CDN at runtime; system font stack for now (self-hosting woff2 is a future polish).
 - **Deploy**: Single Alpine container (`ptd` server + `ptadmin` CLI inside). `ptagent` CLI released separately via goreleaser.
 

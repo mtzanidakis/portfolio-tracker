@@ -32,12 +32,12 @@ admin:
 test:
 	docker run --rm -v $(PWD):/src:ro -w /src \
 		-e GOFLAGS=-buildvcs=false \
-		golang:1.26.5 \
+		golang:1.27.1 \
 		sh -c "go test -race -cover ./..."
 
 lint:
 	docker run --rm -v $(PWD):/src:ro -w /src \
-		golangci/golangci-lint:latest-alpine \
+		golangci/golangci-lint:v2.13.2-alpine \
 		golangci-lint run ./...
 
 lint-web:
@@ -52,7 +52,7 @@ test-web:
 ptagent-build:
 	docker run --rm -v $(PWD):/src -w /src \
 		-e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false \
-		golang:1.26.5 \
+		golang:1.27.1 \
 		go build -ldflags "-s -w -X github.com/mtzanidakis/portfolio-tracker/internal/version.Version=$(VERSION)" \
 		-o bin/ptagent ./cmd/ptagent
 	@echo "Built: ./bin/ptagent"
