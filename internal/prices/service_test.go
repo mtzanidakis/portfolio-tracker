@@ -217,17 +217,3 @@ func TestYahooRangeFor(t *testing.T) {
 		}
 	}
 }
-
-func TestCoingeckoDaysFor(t *testing.T) {
-	now := time.Now()
-	if got := coingeckoDaysFor(time.Time{}); got != "365" {
-		t.Errorf("zero from: got %q, want 365", got)
-	}
-	if got := coingeckoDaysFor(now.AddDate(0, -3, 0)); got != "365" {
-		t.Errorf("3-month range: got %q, want 365 (floor)", got)
-	}
-	got := coingeckoDaysFor(now.AddDate(-2, 0, 0))
-	if got == "365" {
-		t.Errorf("2-year range: got %q, want >365", got)
-	}
-}

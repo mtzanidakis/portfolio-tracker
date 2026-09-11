@@ -72,7 +72,9 @@ type HistoricalSnapshot struct {
 // return more than that (rounded up to their supported range step —
 // Yahoo only offers 1y/2y/5y/10y/max, for instance) and must return
 // what exists when the instrument hasn't traded that far back. Zero
-// `from` means "provider default", typically ~1 year.
+// `from` means "provider default", typically ~1 year. CoinGecko's free
+// tiers are the exception: they cap history at 365 days, so it never
+// reaches further back than that.
 type HistoryProvider interface {
 	FetchHistory(ctx context.Context, ref AssetFetchRef, from time.Time) ([]HistoricalSnapshot, error)
 }
