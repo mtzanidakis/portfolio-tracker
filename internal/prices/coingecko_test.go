@@ -152,10 +152,20 @@ func TestCoinGecko_FetchHistory_CapsAtFreeTierWindow(t *testing.T) {
 	}
 }
 
+// sendTimes is a RoundTripper that records when each request leaves
+// the client, which is what pace() actually spaces out.
+type sendTimes struct {
+	next http.RoundTripper
+	at   []time.Time
+}
+
+func (s *sendTimes) RoundTrip(r *http.Request) (*http.Response, error) {
+	s.at = append(s.at, time.Now())
+	return s.next.RoundTrip(r)
+}
+
 func TestCoinGecko_MinIntervalSpacesRequests(t *testing.T) {
-	var hits []time.Time
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits = append(hits, time.Now())
 		if strings.HasPrefix(r.URL.Path, "/coins/") {
 			_, _ = w.Write([]byte(`{"prices":[]}`))
 			return
@@ -164,8 +174,11 @@ func TestCoinGecko_MinIntervalSpacesRequests(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	// Timestamps are taken client-side: server-side arrival times skew
+	// by connection setup (first request dials, second reuses keep-alive).
+	sent := &sendTimes{next: srv.Client().Transport}
 	const interval = 50 * time.Millisecond
-	c := &CoinGeckoProvider{BaseURL: srv.URL, HTTP: srv.Client(), MinInterval: interval}
+	c := &CoinGeckoProvider{BaseURL: srv.URL, HTTP: &http.Client{Transport: sent}, MinInterval: interval}
 	ref := AssetFetchRef{ID: "bitcoin", Currency: domain.USD}
 	if _, err := c.FetchHistory(t.Context(), ref, time.Time{}); err != nil {
 		t.Fatalf("history: %v", err)
@@ -173,10 +186,12 @@ func TestCoinGecko_MinIntervalSpacesRequests(t *testing.T) {
 	if _, err := c.Fetch(t.Context(), []AssetFetchRef{ref}); err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
-	if len(hits) != 2 {
-		t.Fatalf("hits: %d", len(hits))
+	if len(sent.at) != 2 {
+		t.Fatalf("requests: %d", len(sent.at))
 	}
-	if gap := hits[1].Sub(hits[0]); gap < interval {
+	// Small slack for request construction between pace() and send.
+	const slack = 5 * time.Millisecond
+	if gap := sent.at[1].Sub(sent.at[0]); gap < interval-slack {
 		t.Errorf("requests %v apart, want >= %v", gap, interval)
 	}
 }
