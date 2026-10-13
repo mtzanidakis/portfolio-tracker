@@ -3,6 +3,8 @@
 // the reset, tests that read App's persisted preferences would leak
 // state into each other.
 import '@testing-library/jest-dom/vitest';
+// Mirror main.jsx: numeric style values get "px" (see src/style-units.js).
+import '../src/style-units.js';
 import { afterEach } from 'vitest';
 import { cleanup } from '@testing-library/preact';
 
