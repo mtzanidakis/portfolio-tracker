@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/preact';
+import { render, act } from '@testing-library/preact';
 
 // Stub Chart.js: we only care that PerformanceChart calls the
 // constructor at the right times, with the right data shape, and
@@ -101,7 +101,9 @@ describe('PerformanceChart', () => {
       <PerformanceChart series={SERIES} currency="USD" />,
     );
     const inst = instances[0];
-    unmount();
+    // Preact 11 defers passive-effect cleanups on unmount until after
+    // paint; act() flushes them so the destroy() call is observable.
+    act(() => unmount());
     expect(inst.destroy).toHaveBeenCalled();
   });
 
