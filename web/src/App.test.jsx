@@ -12,13 +12,23 @@ vi.mock('./components/PerformancePage.jsx', () => ({
 vi.mock('./components/AllocationsPage.jsx', () => ({
   AllocationsPage: () => <div data-testid="page-allocations" />,
 }));
-vi.mock('./components/ActivitiesPage.jsx', () => ({
-  ActivitiesPage: (p) => (
-    <div data-testid="page-activities"
-      data-account-filter={p.initialAccountId}
-      data-asset-filter={p.initialAssetSymbol} />
-  ),
-}));
+vi.mock('./components/ActivitiesPage.jsx', async () => {
+  const { useState } = await import('preact/hooks');
+  return {
+    // Capture the initial filters in useState, exactly like the real
+    // ActivitiesPage does — App clears them in an effect right after
+    // mount, so reading props directly would observe the reset.
+    ActivitiesPage: (p) => {
+      const [account] = useState(p.initialAccountId);
+      const [asset] = useState(p.initialAssetSymbol);
+      return (
+        <div data-testid="page-activities"
+          data-account-filter={account}
+          data-asset-filter={asset} />
+      );
+    },
+  };
+});
 vi.mock('./components/AccountsPage.jsx', () => ({
   AccountsPage: ({ onOpenActivity }) => (
     <div data-testid="page-accounts">

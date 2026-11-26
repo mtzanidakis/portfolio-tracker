@@ -32,7 +32,7 @@ admin:
 test:
 	docker run --rm -v $(PWD):/src:ro -w /src \
 		-e GOFLAGS=-buildvcs=false \
-		golang:1.27.3 \
+		golang:1.27.4 \
 		sh -c "go test -race -cover ./..."
 
 lint:
@@ -41,18 +41,18 @@ lint:
 		golangci-lint run ./...
 
 lint-web:
-	docker run --rm -v $(PWD)/web:/web -w /web node:24-alpine \
+	docker run --rm -v $(PWD)/web:/web -w /web node:26-alpine \
 		sh -c "npm ci --silent && echo 'no lint script configured yet'"
 
 test-web:
-	docker run --rm -v $(PWD)/web:/web -w /web node:24-alpine \
+	docker run --rm -v $(PWD)/web:/web -w /web node:26-alpine \
 		sh -c "npm ci --silent && npm test --silent"
 
 # --- local ptagent build for development (standalone; normally via goreleaser) ---
 ptagent-build:
 	docker run --rm -v $(PWD):/src -w /src \
 		-e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false \
-		golang:1.27.3 \
+		golang:1.27.4 \
 		go build -ldflags "-s -w -X github.com/mtzanidakis/portfolio-tracker/internal/version.Version=$(VERSION)" \
 		-o bin/ptagent ./cmd/ptagent
 	@echo "Built: ./bin/ptagent"
